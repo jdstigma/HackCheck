@@ -33,19 +33,28 @@ fun MonitorScreen(
                 if (running) " (stop monitoring to change)" else "",
             fontWeight = FontWeight.Medium,
         )
+        @Composable
+        fun IntervalButton(minutes: Int) {
+            val selected = intervalMinutes == minutes
+            val label = if (minutes == 0) "Off" else "${minutes}m"
+            if (selected) {
+                Button(onClick = { onIntervalChange(minutes) }, enabled = !running) { Text(label) }
+            } else {
+                OutlinedButton(onClick = { onIntervalChange(minutes) }, enabled = !running) { Text(label) }
+            }
+        }
+
         Row(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
         ) {
-            listOf(0, 5, 15, 30, 60).forEach { minutes ->
-                val selected = intervalMinutes == minutes
-                val label = if (minutes == 0) "Off" else "${minutes}m"
-                if (selected) {
-                    Button(onClick = { onIntervalChange(minutes) }, enabled = !running) { Text(label) }
-                } else {
-                    OutlinedButton(onClick = { onIntervalChange(minutes) }, enabled = !running) { Text(label) }
-                }
-            }
+            listOf(0, 5, 15).forEach { IntervalButton(it) }
+        }
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+        ) {
+            listOf(30, 60).forEach { IntervalButton(it) }
         }
 
         Button(
