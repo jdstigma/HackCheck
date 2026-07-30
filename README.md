@@ -63,11 +63,19 @@ changes to apps — only current state. The only way to get this is a service
 that listens continuously and logs transitions **from whenever it's started,
 forward** — nothing before that point is recoverable.
 
-Tap **"Start background monitoring"** to run this. It logs:
+Pick a snapshot interval (5/15/30/60 min) and tap **"Start background
+monitoring"** to run this. It logs:
 - Cell-service-state transitions (in service / out of service / emergency
   only / radio off) via `TelephonyCallback` (Android 12+) or the legacy
-  `PhoneStateListener` (older).
-- WiFi connect/disconnect events (SSID + BSSID) via a broadcast receiver.
+  `PhoneStateListener` (older) — event-driven, logged the moment they happen.
+- WiFi connect/disconnect events (SSID + BSSID) via a broadcast receiver —
+  also event-driven.
+- **Periodic snapshots** at the chosen interval (5 min floor): diffs the
+  installed non-system app list and paired Bluetooth device list against the
+  previous snapshot, logging only what changed (installed/removed apps,
+  paired/unpaired devices), plus a heartbeat entry each interval (cell +
+  WiFi state) so the log itself proves monitoring was alive at that time —
+  useful for spotting a gap where it silently died.
 
 Logged to a simple append-only CSV in app-private storage (no database
 dependency), viewable in-app and exportable to Downloads.
@@ -77,9 +85,11 @@ while running. Foreground services cannot run hidden — that's intentional on
 Android's part, to stop apps from silently monitoring in the background
 without the phone's user knowing. There's no way around this.
 
-Known limitation: monitoring stops if the phone reboots and isn't restarted
-automatically (no boot-persistence yet) — you'd need to reopen the app and
-tap Start again after a restart.
+**Survives a reboot**: `BootReceiver` listens for `BOOT_COMPLETED` and
+restarts monitoring automatically, but only if it was actually running (and
+not explicitly stopped) beforehand — tracked in `MonitorPrefs`
+(SharedPreferences), independent of the OS's own `START_STICKY` service
+restart behavior which doesn't survive a full reboot on its own.
 
 ## Build
 

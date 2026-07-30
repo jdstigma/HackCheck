@@ -8,6 +8,8 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.ApplicationInfo
+import android.content.pm.PackageManager
 import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.IBinder
@@ -15,22 +17,35 @@ import android.telephony.PhoneStateListener
 import android.telephony.ServiceState
 import android.telephony.TelephonyCallback
 import android.telephony.TelephonyManager
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 
 /**
  * Foreground service that logs cell-service-state transitions and WiFi connection changes
- * to MonitorLog as they happen. Android requires a persistent, visible notification for any
- * foreground service -- there's no way around that by OS design, and it's intentional: it's
- * what stops apps from silently monitoring in the background without the phone's user
- * knowing. This only captures events from whenever it's started forward, never retroactively.
+ * to MonitorLog as they happen, plus takes periodic snapshots (installed non-system apps,
+ * paired Bluetooth devices) to catch things that appear and disappear between events.
+ * Android requires a persistent, visible notification for any foreground service -- there's
+ * no way around that by OS design, and it's intentional: it's what stops apps from silently
+ * monitoring in the background without the phone's user knowing. This only captures events/
+ * snapshots from whenever it's started forward, never retroactively.
  */
 class MonitorService : Service() {
 
     private var lastServiceState: Int? = null
     private var lastWifiSsid: String? = null
+    private var lastKnownPackages: Set<String>? = null
+    private var lastKnownBluetooth: Set<String>? = null
 
     private var phoneStateListener: PhoneStateListener? = null
     private var telephonyCallback: TelephonyCallback? = null
     private var wifiReceiver: BroadcastReceiver? = null
+
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -43,20 +58,79 @@ class MonitorService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        val intervalMinutes = intent?.getIntExtra(EXTRA_INTERVAL_MINUTES, -1)?.takeIf { it > 0 }
+            ?: MonitorPrefs.getIntervalMinutes(applicationContext)
+        serviceScope.launch {
+            runSnapshotLoop(intervalMinutes.coerceAtLeast(MIN_INTERVAL_MINUTES))
+        }
         return START_STICKY
     }
 
     override fun onDestroy() {
         MonitorLog.append(applicationContext, "monitor_stopped", "Background monitoring stopped")
+        serviceScope.cancel()
         unregisterTelephonyListener()
         wifiReceiver?.let { try { unregisterReceiver(it) } catch (e: Exception) {} }
         super.onDestroy()
     }
 
+    private suspend fun runSnapshotLoop(intervalMinutes: Int) {
+        val intervalMillis = intervalMinutes * 60_000L
+        while (serviceScope.isActive) {
+            takeSnapshot()
+            delay(intervalMillis)
+        }
+    }
+
+    private fun takeSnapshot() {
+        val cell = cellServiceState(applicationContext)
+        val wifi = currentWifiInfo(applicationContext)
+        MonitorLog.append(
+            applicationContext,
+            "snapshot_heartbeat",
+            "cell=$cell wifi=${wifi?.ssid ?: "none"}",
+        )
+
+        val currentPackages = try {
+            packageManager.getInstalledApplications(0)
+                .filter { (it.flags and ApplicationInfo.FLAG_SYSTEM) == 0 }
+                .map { it.packageName }
+                .toSet()
+        } catch (e: Exception) {
+            null
+        }
+        if (currentPackages != null) {
+            val previous = lastKnownPackages
+            if (previous != null) {
+                (currentPackages - previous).forEach {
+                    MonitorLog.append(applicationContext, "snapshot_app_installed", it)
+                }
+                (previous - currentPackages).forEach {
+                    MonitorLog.append(applicationContext, "snapshot_app_removed", it)
+                }
+            }
+            lastKnownPackages = currentPackages
+        }
+
+        val currentBluetooth = pairedBluetoothDevices(applicationContext)
+            .map { "${it.address} (${it.name})" }
+            .toSet()
+        val previousBt = lastKnownBluetooth
+        if (previousBt != null) {
+            (currentBluetooth - previousBt).forEach {
+                MonitorLog.append(applicationContext, "snapshot_bluetooth_paired", it)
+            }
+            (previousBt - currentBluetooth).forEach {
+                MonitorLog.append(applicationContext, "snapshot_bluetooth_unpaired", it)
+            }
+        }
+        lastKnownBluetooth = currentBluetooth
+    }
+
     private fun registerTelephonyListener() {
         val tm = getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager ?: return
         if (checkSelfPermission(android.Manifest.permission.READ_PHONE_STATE) !=
-            android.content.pm.PackageManager.PERMISSION_GRANTED
+            PackageManager.PERMISSION_GRANTED
         ) {
             MonitorLog.append(applicationContext, "monitor_warning", "READ_PHONE_STATE not granted; cell-service tracking disabled")
             return
@@ -133,7 +207,7 @@ class MonitorService : Service() {
         }
         return Notification.Builder(this, channelId)
             .setContentTitle("HackCheck monitoring")
-            .setContentText("Logging cell-service and WiFi connection changes")
+            .setContentText("Logging cell/WiFi changes + periodic snapshots")
             .setSmallIcon(android.R.drawable.stat_sys_warning)
             .setOngoing(true)
             .build()
@@ -141,9 +215,14 @@ class MonitorService : Service() {
 
     companion object {
         private const val NOTIFICATION_ID = 4201
+        private const val MIN_INTERVAL_MINUTES = 5
+        const val EXTRA_INTERVAL_MINUTES = "interval_minutes"
 
-        fun start(context: Context) {
+        fun start(context: Context, intervalMinutes: Int = MonitorPrefs.getIntervalMinutes(context)) {
+            MonitorPrefs.setEnabled(context, true)
+            MonitorPrefs.setIntervalMinutes(context, intervalMinutes)
             val intent = Intent(context, MonitorService::class.java)
+                .putExtra(EXTRA_INTERVAL_MINUTES, intervalMinutes)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 context.startForegroundService(intent)
             } else {
@@ -152,6 +231,7 @@ class MonitorService : Service() {
         }
 
         fun stop(context: Context) {
+            MonitorPrefs.setEnabled(context, false)
             context.stopService(Intent(context, MonitorService::class.java))
         }
 

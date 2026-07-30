@@ -12,6 +12,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -83,11 +84,12 @@ fun HackCheckScreen() {
     var monitoringRunning by remember { mutableStateOf(MonitorService.isRunning(context)) }
     var monitorLog by remember { mutableStateOf(MonitorLog.readAll(context)) }
     var monitorExportStatus by remember { mutableStateOf<String?>(null) }
+    var intervalMinutes by remember { mutableStateOf(MonitorPrefs.getIntervalMinutes(context)) }
 
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) {
-        MonitorService.start(context)
+        MonitorService.start(context, intervalMinutes)
         monitoringRunning = true
     }
 
@@ -192,6 +194,29 @@ fun HackCheckScreen() {
                 Text(it, modifier = Modifier.padding(top = 8.dp), style = MaterialTheme.typography.bodySmall)
             }
 
+            Text(
+                "Snapshot interval: $intervalMinutes min" + if (monitoringRunning) " (stop monitoring to change)" else "",
+                modifier = Modifier.padding(top = 12.dp),
+                fontWeight = FontWeight.Medium,
+            )
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+            ) {
+                listOf(5, 15, 30, 60).forEach { minutes ->
+                    val selected = intervalMinutes == minutes
+                    val onClick = {
+                        intervalMinutes = minutes
+                        MonitorPrefs.setIntervalMinutes(context, minutes)
+                    }
+                    if (selected) {
+                        Button(onClick = onClick, enabled = !monitoringRunning) { Text("${minutes}m") }
+                    } else {
+                        OutlinedButton(onClick = onClick, enabled = !monitoringRunning) { Text("${minutes}m") }
+                    }
+                }
+            }
+
             Button(
                 onClick = {
                     if (monitoringRunning) {
@@ -202,7 +227,7 @@ fun HackCheckScreen() {
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                             notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
                         } else {
-                            MonitorService.start(context)
+                            MonitorService.start(context, intervalMinutes)
                             monitoringRunning = true
                         }
                     }
@@ -213,7 +238,8 @@ fun HackCheckScreen() {
             }
             Text(
                 if (monitoringRunning)
-                    "Running -- see the persistent notification. Logging cell-service and WiFi changes from now forward."
+                    "Running -- see the persistent notification. Logging cell/WiFi changes as they happen, " +
+                        "plus a snapshot every $intervalMinutes min. Survives a reboot automatically."
                 else
                     "Not running. Android requires a visible notification while this runs (can't be hidden).",
                 style = MaterialTheme.typography.bodySmall,
