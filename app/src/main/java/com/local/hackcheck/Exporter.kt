@@ -11,20 +11,15 @@ import java.util.Locale
 /**
  * Writes scan output to CSV files in the phone's public Downloads folder (MediaStore,
  * no storage permission needed on minSdk 29+), so it can be pulled off the device with
- * `adb pull` and analyzed on a computer.
+ * `adb pull` and analyzed on a computer. Each screen exports its own data independently.
  */
 object Exporter {
 
     private val stamp = SimpleDateFormat("yyyy-MM-dd_HHmmss", Locale.US)
     private val isoTime = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US)
 
-    /** Returns the Downloads-relative paths of the files written. */
-    fun exportAll(
-        context: Context,
-        result: ScanResult,
-        inventory: List<AppRow>,
-        network: NetworkSnapshot? = null,
-    ): List<String> {
+    /** Returns the Downloads-relative paths of the files written (findings + full inventory). */
+    fun exportScan(context: Context, result: ScanResult, inventory: List<AppRow>): List<String> {
         val ts = stamp.format(Date())
         val findingsPath = writeCsv(
             context,
@@ -57,32 +52,33 @@ object Exporter {
                 }
             },
         )
+        return listOfNotNull(findingsPath, inventoryPath)
+    }
 
-        val networkPath = network?.let { n ->
-            writeCsv(
-                context,
-                "hackcheck_network_$ts.csv",
-                buildString {
-                    append("Section,Key,Value\n")
-                    append("cell,service_state,${cell(n.cellState)}\n")
-                    append("wifi,ssid,${cell(n.wifi?.ssid ?: "")}\n")
-                    append("wifi,bssid,${cell(n.wifi?.bssid ?: "")}\n")
-                    append("wifi,frequency_mhz,${n.wifi?.frequencyMHz ?: ""}\n")
-                    append("wifi,link_speed_mbps,${n.wifi?.linkSpeedMbps ?: ""}\n")
-                    n.bluetooth.forEach { d ->
-                        append("bluetooth_paired,${cell(d.address)},${cell(d.name)}\n")
-                    }
-                    n.dataUsage?.rows?.forEach { row ->
-                        append(
-                            "data_usage_${n.dataUsage.windowDays}d,${cell(row.packageName)}," +
-                                "${cell("wifi=${row.wifiBytes};mobile=${row.mobileBytes}")}\n",
-                        )
-                    }
-                },
-            )
-        }
-
-        return listOfNotNull(findingsPath, inventoryPath, networkPath)
+    /** Exports the network/devices snapshot alone. */
+    fun exportNetwork(context: Context, n: NetworkSnapshot): String? {
+        val ts = stamp.format(Date())
+        return writeCsv(
+            context,
+            "hackcheck_network_$ts.csv",
+            buildString {
+                append("Section,Key,Value\n")
+                append("cell,service_state,${cell(n.cellState)}\n")
+                append("wifi,ssid,${cell(n.wifi?.ssid ?: "")}\n")
+                append("wifi,bssid,${cell(n.wifi?.bssid ?: "")}\n")
+                append("wifi,frequency_mhz,${n.wifi?.frequencyMHz ?: ""}\n")
+                append("wifi,link_speed_mbps,${n.wifi?.linkSpeedMbps ?: ""}\n")
+                n.bluetooth.forEach { d ->
+                    append("bluetooth_paired,${cell(d.address)},${cell(d.name)}\n")
+                }
+                n.dataUsage?.rows?.forEach { row ->
+                    append(
+                        "data_usage_${n.dataUsage.windowDays}d,${cell(row.packageName)}," +
+                            "${cell("wifi=${row.wifiBytes};mobile=${row.mobileBytes}")}\n",
+                    )
+                }
+            },
+        )
     }
 
     /** Exports the accumulated background-monitoring log (cell-service + WiFi history). */

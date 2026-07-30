@@ -6,6 +6,10 @@ permissions, active accessibility services, device admin/owner apps, and
 matches against a small list of publicly documented stalkerware package
 names.
 
+The home screen is a menu into three independent screens, each with its own
+export: **App Scan**, **Network & Devices**, and **Background Monitoring**.
+Each screen's state persists while you navigate between the others.
+
 ## What it checks
 
 - **Installed apps with no home-screen icon** (excluding normal system
