@@ -5,4 +5,5 @@ enum class Screen(val title: String) {
     Scan("App Scan"),
     Network("Network & Devices"),
     Monitor("Background Monitoring"),
+    Capture("Traffic Capture"),
 }

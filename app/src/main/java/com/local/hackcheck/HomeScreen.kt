@@ -17,6 +17,7 @@ fun HomeScreen(
     scanSubtitle: String,
     networkSubtitle: String,
     monitorSubtitle: String,
+    captureSubtitle: String,
     onOpen: (Screen) -> Unit,
 ) {
     Column(
@@ -26,6 +27,7 @@ fun HomeScreen(
         MenuButton("App Scan", scanSubtitle) { onOpen(Screen.Scan) }
         MenuButton("Network & Devices", networkSubtitle) { onOpen(Screen.Network) }
         MenuButton("Background Monitoring", monitorSubtitle) { onOpen(Screen.Monitor) }
+        MenuButton("Traffic Capture", captureSubtitle) { onOpen(Screen.Capture) }
     }
 }
 

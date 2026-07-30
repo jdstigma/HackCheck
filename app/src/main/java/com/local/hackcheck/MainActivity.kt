@@ -79,11 +79,25 @@ fun HackCheckApp() {
     var monitorExportStatus by remember { mutableStateOf<String?>(null) }
     var intervalMinutes by remember { mutableStateOf(MonitorPrefs.getIntervalMinutes(context)) }
 
+    // Capture state
+    var capturingRunning by remember { mutableStateOf(CaptureVpnService.isRunning(context)) }
+    var captureLog by remember { mutableStateOf(CaptureLog.readAll(context)) }
+    var captureExportStatus by remember { mutableStateOf<String?>(null) }
+
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) {
         MonitorService.start(context, intervalMinutes)
         monitoringRunning = true
+    }
+
+    val vpnPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        if (result.resultCode == android.app.Activity.RESULT_OK) {
+            CaptureVpnService.start(context)
+            capturingRunning = true
+        }
     }
 
     fun runNetworkChecks() {
@@ -131,6 +145,10 @@ fun HackCheckApp() {
         "Running, ${monitorLog.size} events logged"
     else
         "Stopped, ${monitorLog.size} events logged"
+    val captureSubtitle = if (capturingRunning)
+        "Running, ${captureLog.size} flows logged"
+    else
+        "Stopped, ${captureLog.size} flows logged"
 
     Scaffold(
         topBar = {
@@ -152,6 +170,7 @@ fun HackCheckApp() {
                     scanSubtitle = scanSubtitle,
                     networkSubtitle = networkSubtitle,
                     monitorSubtitle = monitorSubtitle,
+                    captureSubtitle = captureSubtitle,
                     onOpen = { currentScreen = it },
                 )
 
@@ -220,6 +239,34 @@ fun HackCheckApp() {
                         scope.launch(Dispatchers.IO) {
                             val path = Exporter.exportMonitorLog(context)
                             monitorExportStatus = path?.let { "Saved: $it" } ?: "Export failed"
+                        }
+                    },
+                )
+
+                Screen.Capture -> CaptureScreen(
+                    running = capturingRunning,
+                    log = captureLog,
+                    exportStatus = captureExportStatus,
+                    onToggle = {
+                        if (capturingRunning) {
+                            CaptureVpnService.stop(context)
+                            capturingRunning = false
+                            captureLog = CaptureLog.readAll(context)
+                        } else {
+                            val prepareIntent = android.net.VpnService.prepare(context)
+                            if (prepareIntent != null) {
+                                vpnPermissionLauncher.launch(prepareIntent)
+                            } else {
+                                CaptureVpnService.start(context)
+                                capturingRunning = true
+                            }
+                        }
+                    },
+                    onRefreshLog = { captureLog = CaptureLog.readAll(context) },
+                    onExport = {
+                        scope.launch(Dispatchers.IO) {
+                            val path = Exporter.exportCaptureLog(context)
+                            captureExportStatus = path?.let { "Saved: $it" } ?: "Export failed"
                         }
                     },
                 )

@@ -94,6 +94,20 @@ object Exporter {
         )
     }
 
+    /** Exports the accumulated traffic-capture flow log. */
+    fun exportCaptureLog(context: Context): String? {
+        val entries = CaptureLog.readAll(context)
+        val ts = stamp.format(Date())
+        return writeCsv(
+            context,
+            "hackcheck_capture_log_$ts.csv",
+            "Timestamp,Protocol,App,RemoteAddress,BytesSent,BytesReceived,DurationMs\n" + entries.joinToString("") { e ->
+                "${cell(e.timestamp)},${cell(e.protocol)},${cell(e.app)},${cell(e.remoteAddress)}," +
+                    "${e.bytesSent},${e.bytesReceived},${e.durationMs}\n"
+            },
+        )
+    }
+
     private fun writeCsv(context: Context, fileName: String, csv: String): String? {
         val values = ContentValues().apply {
             put(MediaStore.Downloads.DISPLAY_NAME, fileName)
