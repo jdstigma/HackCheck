@@ -56,17 +56,30 @@ detection with more certainty), a PC-side ADB diagnostic is more thorough
 than anything installable on the phone itself, since `adb shell` runs with
 elevated shell-user privileges a regular app doesn't have.
 
-Also **not retroactively available** — Android doesn't expose a history of
-these to apps, only current state:
-- **Cell-service-drop history** (when/how often total loss of service
-  happened) — only a live listener running continuously could log this,
-  and only from whenever it starts forward, never retroactively.
-- **WiFi connection history** (which networks connected/disconnected and
-  when) — same limitation; only current connection is queryable.
+## Background monitoring (cell-service + WiFi history)
 
-Both would need a persistent background-monitoring service (with the
-foreground-service notification Android requires for that), planned as a
-separate follow-up rather than part of the one-shot scan model above.
+Android doesn't expose a history of cell-service drops or WiFi connection
+changes to apps — only current state. The only way to get this is a service
+that listens continuously and logs transitions **from whenever it's started,
+forward** — nothing before that point is recoverable.
+
+Tap **"Start background monitoring"** to run this. It logs:
+- Cell-service-state transitions (in service / out of service / emergency
+  only / radio off) via `TelephonyCallback` (Android 12+) or the legacy
+  `PhoneStateListener` (older).
+- WiFi connect/disconnect events (SSID + BSSID) via a broadcast receiver.
+
+Logged to a simple append-only CSV in app-private storage (no database
+dependency), viewable in-app and exportable to Downloads.
+
+**Hard Android constraint: this requires a persistent, visible notification**
+while running. Foreground services cannot run hidden — that's intentional on
+Android's part, to stop apps from silently monitoring in the background
+without the phone's user knowing. There's no way around this.
+
+Known limitation: monitoring stops if the phone reboots and isn't restarted
+automatically (no boot-persistence yet) — you'd need to reopen the app and
+tap Start again after a restart.
 
 ## Build
 

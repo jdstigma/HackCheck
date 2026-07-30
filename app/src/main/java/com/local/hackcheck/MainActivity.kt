@@ -80,6 +80,17 @@ fun HackCheckScreen() {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
 
+    var monitoringRunning by remember { mutableStateOf(MonitorService.isRunning(context)) }
+    var monitorLog by remember { mutableStateOf(MonitorLog.readAll(context)) }
+    var monitorExportStatus by remember { mutableStateOf<String?>(null) }
+
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) {
+        MonitorService.start(context)
+        monitoringRunning = true
+    }
+
     fun runNetworkChecks() {
         checkingNetwork = true
         scope.launch(Dispatchers.Default) {
@@ -181,6 +192,58 @@ fun HackCheckScreen() {
                 Text(it, modifier = Modifier.padding(top = 8.dp), style = MaterialTheme.typography.bodySmall)
             }
 
+            Button(
+                onClick = {
+                    if (monitoringRunning) {
+                        MonitorService.stop(context)
+                        monitoringRunning = false
+                        monitorLog = MonitorLog.readAll(context)
+                    } else {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                            notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                        } else {
+                            MonitorService.start(context)
+                            monitoringRunning = true
+                        }
+                    }
+                },
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+            ) {
+                Text(if (monitoringRunning) "Stop background monitoring" else "Start background monitoring")
+            }
+            Text(
+                if (monitoringRunning)
+                    "Running -- see the persistent notification. Logging cell-service and WiFi changes from now forward."
+                else
+                    "Not running. Android requires a visible notification while this runs (can't be hidden).",
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(top = 4.dp),
+            )
+
+            OutlinedButton(
+                onClick = { monitorLog = MonitorLog.readAll(context) },
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+            ) {
+                Text("Refresh monitoring log (${monitorLog.size} events so far)")
+            }
+
+            if (monitorLog.isNotEmpty()) {
+                Button(
+                    onClick = {
+                        scope.launch(Dispatchers.IO) {
+                            val path = Exporter.exportMonitorLog(context)
+                            monitorExportStatus = path?.let { "Saved: $it" } ?: "Export failed"
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                ) {
+                    Text("Export monitoring log (${monitorLog.size} events)")
+                }
+            }
+            monitorExportStatus?.let {
+                Text(it, modifier = Modifier.padding(top = 4.dp), style = MaterialTheme.typography.bodySmall)
+            }
+
             if (scanning || checkingNetwork) {
                 Column(
                     modifier = Modifier.fillMaxWidth().padding(top = 32.dp),
@@ -195,6 +258,10 @@ fun HackCheckScreen() {
                 modifier = Modifier.padding(top = 12.dp),
             ) {
                 network?.let { n -> item { NetworkCard(n) } }
+
+                if (monitorLog.isNotEmpty()) {
+                    item { MonitorLogCard(monitorLog) }
+                }
 
                 result?.let { r ->
                     item {
@@ -259,6 +326,22 @@ private fun NetworkCard(n: NetworkSnapshot) {
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MonitorLogCard(log: List<LogEntry>) {
+    Card {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Text("Monitoring log (most recent 15 of ${log.size})", fontWeight = FontWeight.Bold)
+            log.takeLast(15).reversed().forEach { e ->
+                Text(
+                    "${e.timestamp}  [${e.eventType}]  ${e.detail}",
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
             }
         }
     }

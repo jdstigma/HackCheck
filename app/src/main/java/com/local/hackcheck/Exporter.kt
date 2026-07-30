@@ -85,6 +85,19 @@ object Exporter {
         return listOfNotNull(findingsPath, inventoryPath, networkPath)
     }
 
+    /** Exports the accumulated background-monitoring log (cell-service + WiFi history). */
+    fun exportMonitorLog(context: Context): String? {
+        val entries = MonitorLog.readAll(context)
+        val ts = stamp.format(Date())
+        return writeCsv(
+            context,
+            "hackcheck_monitor_log_$ts.csv",
+            "Timestamp,EventType,Detail\n" + entries.joinToString("") { e ->
+                "${cell(e.timestamp)},${cell(e.eventType)},${cell(e.detail)}\n"
+            },
+        )
+    }
+
     private fun writeCsv(context: Context, fileName: String, csv: String): String? {
         val values = ContentValues().apply {
             put(MediaStore.Downloads.DISPLAY_NAME, fileName)
