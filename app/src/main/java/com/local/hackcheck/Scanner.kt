@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
+import android.os.PowerManager
 import android.provider.Settings
 
 enum class RiskLevel { HIGH, MEDIUM, INFO }
@@ -18,6 +19,20 @@ data class Finding(
 data class ScanResult(
     val findings: List<Finding>,
     val appsScanned: Int,
+)
+
+data class AppRow(
+    val packageName: String,
+    val label: String,
+    val isSystem: Boolean,
+    val hasLauncherIcon: Boolean,
+    val versionName: String?,
+    val firstInstallTimeMillis: Long,
+    val lastUpdateTimeMillis: Long,
+    val grantedDangerousPermissions: List<String>,
+    val ignoringBatteryOptimizations: Boolean,
+    val knownStalkerwareMatch: Boolean,
+    val dualUseMonitoringMatch: Boolean,
 )
 
 private val DANGEROUS_PERMISSIONS = setOf(
@@ -168,6 +183,43 @@ fun runScan(context: Context): ScanResult {
     }
 
     return ScanResult(findings.sortedBy { it.level.ordinal }, packages.size)
+}
+
+// Full per-app raw dump, richer than the curated findings list -- meant for pulling off
+// the device and analyzing separately (adb pull the exported CSV to a computer).
+fun rawInventory(context: Context): List<AppRow> {
+    val pm = context.packageManager
+    val powerManager = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
+
+    @Suppress("DEPRECATION")
+    val packages: List<PackageInfo> = try {
+        pm.getInstalledPackages(PackageManager.GET_PERMISSIONS)
+    } catch (e: Exception) {
+        emptyList()
+    }
+
+    return packages.mapNotNull { pkg ->
+        val appInfo = pkg.applicationInfo ?: return@mapNotNull null
+        val pkgName = pkg.packageName
+        val ignoringOptimizations = try {
+            powerManager?.isIgnoringBatteryOptimizations(pkgName) ?: false
+        } catch (e: Exception) {
+            false
+        }
+        AppRow(
+            packageName = pkgName,
+            label = pm.getApplicationLabel(appInfo).toString(),
+            isSystem = (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0,
+            hasLauncherIcon = pm.getLaunchIntentForPackage(pkgName) != null,
+            versionName = pkg.versionName,
+            firstInstallTimeMillis = pkg.firstInstallTime,
+            lastUpdateTimeMillis = pkg.lastUpdateTime,
+            grantedDangerousPermissions = grantedDangerousPermissions(pkg),
+            ignoringBatteryOptimizations = ignoringOptimizations,
+            knownStalkerwareMatch = KNOWN_STALKERWARE_PACKAGES.contains(pkgName),
+            dualUseMonitoringMatch = DUAL_USE_MONITORING_PACKAGES.contains(pkgName),
+        )
+    }
 }
 
 private fun grantedDangerousPermissions(pkg: PackageInfo): List<String> {

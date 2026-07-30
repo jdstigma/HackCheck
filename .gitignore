@@ -14,3 +14,6 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+# Real scan output from an actual device -- never commit, this repo is public.
+/scan_results/

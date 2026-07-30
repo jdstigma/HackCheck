@@ -25,6 +25,19 @@ names.
 - **Active device admins**, and any app holding **Device Owner / Profile
   Owner** status — unusual outside a corporate-managed phone, and grants
   broad remote-management control.
+- **Per-app data usage** (WiFi + mobile, last 7 days) — via `NetworkStatsManager`,
+  requires granting "Usage access" in Settings (the app links you there directly).
+  Mobile-data usage may be unavailable on some devices/Android versions (needs
+  carrier-privileged access on some builds) — WiFi usage still works either way.
+- **Paired Bluetooth devices** — a snapshot of bonded devices, not just
+  currently-connected ones, since a device doesn't need to be actively
+  connected right now to have been used for syncing/exfiltration in the past.
+- **Current WiFi connection** (SSID/BSSID/link speed) and **current cellular
+  service state** (in service / out of service / emergency only / radio off).
+
+Export writes three CSVs to Downloads (findings, full app inventory, and
+network/device data) so results can be pulled off the device with `adb pull`
+and analyzed on a computer.
 
 ## What it can't check (and why)
 
@@ -42,6 +55,18 @@ For deeper visibility (AppOps, full accessibility/admin state, hidden-app
 detection with more certainty), a PC-side ADB diagnostic is more thorough
 than anything installable on the phone itself, since `adb shell` runs with
 elevated shell-user privileges a regular app doesn't have.
+
+Also **not retroactively available** — Android doesn't expose a history of
+these to apps, only current state:
+- **Cell-service-drop history** (when/how often total loss of service
+  happened) — only a live listener running continuously could log this,
+  and only from whenever it starts forward, never retroactively.
+- **WiFi connection history** (which networks connected/disconnected and
+  when) — same limitation; only current connection is queryable.
+
+Both would need a persistent background-monitoring service (with the
+foreground-service notification Android requires for that), planned as a
+separate follow-up rather than part of the one-shot scan model above.
 
 ## Build
 
