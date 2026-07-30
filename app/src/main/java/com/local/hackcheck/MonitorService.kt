@@ -58,10 +58,19 @@ class MonitorService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val intervalMinutes = intent?.getIntExtra(EXTRA_INTERVAL_MINUTES, -1)?.takeIf { it > 0 }
-            ?: MonitorPrefs.getIntervalMinutes(applicationContext)
-        serviceScope.launch {
-            runSnapshotLoop(intervalMinutes.coerceAtLeast(MIN_INTERVAL_MINUTES))
+        // -1 sentinel means "no explicit extra passed, fall back to saved preference";
+        // 0 is a real, explicit choice meaning "snapshots off, event-driven only".
+        val extra = intent?.getIntExtra(EXTRA_INTERVAL_MINUTES, -1) ?: -1
+        val intervalMinutes = if (extra >= 0) extra else MonitorPrefs.getIntervalMinutes(applicationContext)
+        if (intervalMinutes <= 0) {
+            MonitorLog.append(
+                applicationContext, "monitor_snapshots_disabled",
+                "Periodic snapshots off; logging cell-service/WiFi changes as they happen only",
+            )
+        } else {
+            serviceScope.launch {
+                runSnapshotLoop(intervalMinutes.coerceAtLeast(MIN_INTERVAL_MINUTES))
+            }
         }
         return START_STICKY
     }

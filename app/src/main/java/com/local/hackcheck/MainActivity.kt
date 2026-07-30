@@ -195,7 +195,8 @@ fun HackCheckScreen() {
             }
 
             Text(
-                "Snapshot interval: $intervalMinutes min" + if (monitoringRunning) " (stop monitoring to change)" else "",
+                "Snapshot interval: " + (if (intervalMinutes <= 0) "Off (event-driven only)" else "$intervalMinutes min") +
+                    if (monitoringRunning) " (stop monitoring to change)" else "",
                 modifier = Modifier.padding(top = 12.dp),
                 fontWeight = FontWeight.Medium,
             )
@@ -203,16 +204,17 @@ fun HackCheckScreen() {
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
             ) {
-                listOf(5, 15, 30, 60).forEach { minutes ->
+                listOf(0, 5, 15, 30, 60).forEach { minutes ->
                     val selected = intervalMinutes == minutes
+                    val label = if (minutes == 0) "Off" else "${minutes}m"
                     val onClick = {
                         intervalMinutes = minutes
                         MonitorPrefs.setIntervalMinutes(context, minutes)
                     }
                     if (selected) {
-                        Button(onClick = onClick, enabled = !monitoringRunning) { Text("${minutes}m") }
+                        Button(onClick = onClick, enabled = !monitoringRunning) { Text(label) }
                     } else {
-                        OutlinedButton(onClick = onClick, enabled = !monitoringRunning) { Text("${minutes}m") }
+                        OutlinedButton(onClick = onClick, enabled = !monitoringRunning) { Text(label) }
                     }
                 }
             }
@@ -238,8 +240,9 @@ fun HackCheckScreen() {
             }
             Text(
                 if (monitoringRunning)
-                    "Running -- see the persistent notification. Logging cell/WiFi changes as they happen, " +
-                        "plus a snapshot every $intervalMinutes min. Survives a reboot automatically."
+                    "Running -- see the persistent notification. Logging cell/WiFi changes as they happen" +
+                        (if (intervalMinutes > 0) ", plus a snapshot every $intervalMinutes min." else " (no periodic snapshots).") +
+                        " Survives a reboot automatically."
                 else
                     "Not running. Android requires a visible notification while this runs (can't be hidden).",
                 style = MaterialTheme.typography.bodySmall,

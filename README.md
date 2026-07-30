@@ -63,8 +63,11 @@ changes to apps — only current state. The only way to get this is a service
 that listens continuously and logs transitions **from whenever it's started,
 forward** — nothing before that point is recoverable.
 
-Pick a snapshot interval (5/15/30/60 min) and tap **"Start background
-monitoring"** to run this. It logs:
+Pick a snapshot interval (**Off** / 5 / 15 / 30 / 60 min) and tap **"Start
+background monitoring"** to run this. **Off** disables periodic snapshots
+entirely and only logs event-driven changes (cell-service transitions, WiFi
+connect/disconnect) as they happen — no periodic app/Bluetooth diffing or
+heartbeat entries. It logs:
 - Cell-service-state transitions (in service / out of service / emergency
   only / radio off) via `TelephonyCallback` (Android 12+) or the legacy
   `PhoneStateListener` (older) — event-driven, logged the moment they happen.
