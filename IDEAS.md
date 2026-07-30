@@ -16,12 +16,14 @@ A running list of feature/enhancement ideas to review one by one. Status legend:
 
 ## Approved / in progress
 
-- **Packet capture, Option A (connection-metadata capture)** — `VpnService` + hand-rolled per-flow socket relay, no third-party TCP stack. Investigation done (2026-07-30): ruled out bundling PCAPdroid's engine (GPL-3.0, would force HackCheck to also be GPL, undercutting a paid listing); ruled out root-based capture (target device + general audience aren't rooted); go-tun2socks/hev-sockstun (lwIP/C-based) noted as a fallback upgrade if the hand-rolled TCP relay proves unreliable, but adds real build-toolchain complexity (Go/Gomobile or NDK) so starting without them. UDP relay is straightforward (stateless forward); TCP relay uses a simplified single-window, no-retransmit approach (real TCP correctness deferred). Own dedicated screen (`Screen.Capture`), not folded into the existing Monitor screen. 🔨 in progress
+_(moved here when picked up)_
 
 ---
 
 ## Done
 
+- Packet capture, Option A (connection-metadata capture) — `VpnService` + hand-rolled per-flow socket relay (UDP + simplified TCP, no third-party TCP stack). Investigation ruled out bundling PCAPdroid's engine (GPL-3.0, would force HackCheck to also be GPL, undercutting a paid listing) and root-based capture; go-tun2socks/hev-sockstun noted as a fallback upgrade if the hand-rolled TCP relay proves unreliable in practice. Own dedicated screen (`Screen.Capture`). Built + installed on device, awaiting real-world connectivity test.
+- `analyze_capture.py` — PC-side breakdown of exported capture logs: per-app/per-remote pivots, distinct-destination fan-out flagging, unattributed ("Unknown" app) flow highlighting, protocol split, charts. Verified end-to-end against synthetic data.
 - v1: one-shot scan (hidden apps, dangerous permission grants, known-stalkerware list, dual-use monitoring list, accessibility services, device admin/owner status)
 - v2: per-app data usage (NetworkStatsManager + Usage Access), paired Bluetooth devices, current WiFi connection, current cell service state
 - v3: background monitoring service (foreground service, persistent notification by OS requirement) — event-driven cell-service-state + WiFi-connection logging
