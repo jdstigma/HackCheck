@@ -11,17 +11,13 @@
     <path
         android:fillColor="#14202B"
         android:pathData="M54,28 L72,35.5 V54 C72,66.5 64.5,74.5 54,79.5 C43.5,74.5 36,66.5 36,54 V35.5 Z" />
-    <!-- Magnifying glass -->
+    <!-- Checkmark (protective/verified, not surveillance) -->
     <path
-        android:fillColor="#FF6A3D"
-        android:pathData="M50,44 m-11,0 a11,11 0 1,0 22,0 a11,11 0 1,0 -22,0"
-        android:strokeColor="#FF6A3D"
-        android:strokeWidth="4"
-        android:fillAlpha="0" />
-    <path
-        android:fillColor="#FF6A3D"
-        android:strokeColor="#FF6A3D"
-        android:strokeWidth="4"
+        android:fillColor="#1FBFA6"
+        android:fillAlpha="0"
+        android:strokeColor="#1FBFA6"
+        android:strokeWidth="7"
         android:strokeLineCap="round"
-        android:pathData="M58,52 L67,61" />
+        android:strokeLineJoin="round"
+        android:pathData="M40,55 L49,64 L69,42" />
 </vector>
