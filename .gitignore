@@ -22,7 +22,10 @@ __pycache__/
 
 # PC-side forensics companion: cloned tool + real device acquisition data, never commit.
 /analysis/forensics/ALEAPP/
+/analysis/forensics/.venv-mvt/
+/analysis/forensics/.venv-aleapp/
 /analysis/forensics/*.exe
+/analysis/forensics/checksums.txt
 /analysis/forensics/androidqf_output/
 /analysis/forensics/mvt_results/
 /analysis/forensics/aleapp_results/
