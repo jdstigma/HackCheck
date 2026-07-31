@@ -84,6 +84,11 @@ fun HackCheckApp() {
     var captureLog by remember { mutableStateOf(CaptureLog.readAll(context)) }
     var captureExportStatus by remember { mutableStateOf<String?>(null) }
 
+    // Network tools (CLI) state
+    var toolsInput by remember { mutableStateOf("") }
+    var toolsHistory by remember { mutableStateOf<List<ToolsHistoryEntry>>(emptyList()) }
+    var toolsRunning by remember { mutableStateOf(false) }
+
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) {
@@ -149,6 +154,7 @@ fun HackCheckApp() {
         "Running, ${captureLog.size} flows logged"
     else
         "Stopped, ${captureLog.size} flows logged"
+    val toolsSubtitle = if (toolsHistory.isEmpty()) "ping, DNS, port scan, and more" else "${toolsHistory.size} commands run"
 
     Scaffold(
         topBar = {
@@ -171,6 +177,7 @@ fun HackCheckApp() {
                     networkSubtitle = networkSubtitle,
                     monitorSubtitle = monitorSubtitle,
                     captureSubtitle = captureSubtitle,
+                    toolsSubtitle = toolsSubtitle,
                     onOpen = { currentScreen = it },
                 )
 
@@ -269,6 +276,24 @@ fun HackCheckApp() {
                             captureExportStatus = path?.let { "Saved: $it" } ?: "Export failed"
                         }
                     },
+                )
+
+                Screen.Tools -> ToolsScreen(
+                    input = toolsInput,
+                    onInputChange = { toolsInput = it },
+                    history = toolsHistory,
+                    running = toolsRunning,
+                    onRun = {
+                        val command = toolsInput
+                        toolsRunning = true
+                        scope.launch(Dispatchers.Default) {
+                            val output = NetworkTools.run(context, command)
+                            toolsHistory = toolsHistory + ToolsHistoryEntry(command, output)
+                            toolsRunning = false
+                            toolsInput = ""
+                        }
+                    },
+                    onClear = { toolsHistory = emptyList() },
                 )
             }
         }

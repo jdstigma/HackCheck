@@ -18,6 +18,7 @@ fun HomeScreen(
     networkSubtitle: String,
     monitorSubtitle: String,
     captureSubtitle: String,
+    toolsSubtitle: String,
     onOpen: (Screen) -> Unit,
 ) {
     Column(
@@ -30,6 +31,7 @@ fun HomeScreen(
         if (CAPTURE_FEATURE_ENABLED) {
             MenuButton("Traffic Capture", captureSubtitle) { onOpen(Screen.Capture) }
         }
+        MenuButton("Network Tools", toolsSubtitle) { onOpen(Screen.Tools) }
     }
 }
 

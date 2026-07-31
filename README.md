@@ -98,6 +98,23 @@ not explicitly stopped) beforehand — tracked in `MonitorPrefs`
 (SharedPreferences), independent of the OS's own `START_STICKY` service
 restart behavior which doesn't survive a full reboot on its own.
 
+## Network Tools (in-app CLI)
+
+A small terminal-style screen for no-root network recon, useful for checking
+whether the network you're on looks trustworthy:
+
+- `ping <host> [count]` — via the device's own system `ping` binary
+  (`/system/bin/ping`, shelled out to — no raw-socket permission needed,
+  same mechanism most Play Store network-utility apps use)
+- `dns <host>` — resolve a hostname (`InetAddress.getAllByName`)
+- `portscan <host> <start> <end>` — TCP connect scan, capped at 1024 ports
+  per run
+- `myip` — local network interfaces + WiFi gateway/DNS servers
+- `help` — command list
+
+All pure standard-library/Android APIs, no elevated access. Only use against
+hosts and networks you're authorized to test.
+
 ## Build
 
 Standard Android Gradle project (Kotlin + Jetpack Compose, no third-party
