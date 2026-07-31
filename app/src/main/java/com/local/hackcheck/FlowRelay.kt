@@ -3,6 +3,7 @@ package com.local.hackcheck
 import android.content.Context
 import android.net.ConnectivityManager
 import android.net.VpnService
+import android.util.Log
 import java.io.FileOutputStream
 import java.io.IOException
 import java.net.DatagramPacket
@@ -12,6 +13,8 @@ import java.net.InetSocketAddress
 import java.net.Socket
 import java.util.concurrent.ExecutorService
 import kotlin.random.Random
+
+private const val TAG = "HackCheckCapture"
 
 /** Shared context every flow needs: how to reach the real network and write back to the TUN. */
 class FlowContext(
@@ -142,7 +145,10 @@ class TcpFlow(
         fc.executor.submit {
             try {
                 val s = Socket()
-                fc.vpnService.protect(s)
+                val protected = fc.vpnService.protect(s)
+                if (!protected) {
+                    Log.w(TAG, "protect() returned false for ${ipToString(remoteIp)}:$remotePort")
+                }
                 s.connect(InetSocketAddress(InetAddress.getByAddress(remoteIp), remotePort), 8000)
                 socket = s
                 appLabel = resolveAppLabel(fc.context, PROTO_TCP, localPort, ipToString(remoteIp), remotePort)
@@ -158,6 +164,7 @@ class TcpFlow(
                 }
                 finish()
             } catch (e: Exception) {
+                Log.w(TAG, "TCP connect failed for ${ipToString(remoteIp)}:$remotePort", e)
                 reset()
             }
         }
