@@ -159,6 +159,17 @@ published spyware/stalkerware indicators of compromise, and parsing
 Android's Intrusion Logging data if this device has it enabled. See
 `analysis/forensics/README.md` for the full workflow.
 
+### PC Companion app
+
+`hackcheck_companion.py` is a small desktop control panel (tkinter) for the
+PC-side tools above, so you don't need the command line for routine use:
+analyzing a scan/capture export, or running the one-time forensics setup and
+the push-button acquisition+MVT scan. Run it with `python hackcheck_companion.py`
+(needs `pip install pandas matplotlib`), or double-click
+`HackCheck Companion.bat`. `build_exe.bat` packages it into a standalone
+`HackCheck Companion.exe` via PyInstaller — grab a prebuilt copy from the
+[Releases](../../releases) page instead if you don't want to build it yourself.
+
 ## Build
 
 Standard Android Gradle project (Kotlin + Jetpack Compose, no third-party

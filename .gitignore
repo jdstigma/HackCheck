@@ -20,6 +20,10 @@ local.properties
 __pycache__/
 *.pyc
 
+# PyInstaller build output for the PC companion app -- built via build_exe.bat, not committed.
+/dist/
+*.spec
+
 # PC-side forensics companion: cloned tool + real device acquisition data, never commit.
 /analysis/forensics/ALEAPP/
 /analysis/forensics/.venv-mvt/

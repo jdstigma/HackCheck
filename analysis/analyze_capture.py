@@ -37,8 +37,7 @@ def fmt_bytes(n):
     return f"{n:.1f} TB"
 
 
-def main():
-    arg = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("scan_results")
+def analyze(arg: Path):
     src = find_latest_capture_csv(arg)
     out = src.parent / "capture_analysis"
     out.mkdir(exist_ok=True)
@@ -136,6 +135,11 @@ def main():
     plt.close(fig)
 
     print(f"\nAll outputs saved to: {out}")
+
+
+def main():
+    arg = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("scan_results")
+    analyze(arg)
 
 
 if __name__ == "__main__":
