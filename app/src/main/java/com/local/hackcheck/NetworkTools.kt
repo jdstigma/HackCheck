@@ -37,6 +37,7 @@ object NetworkTools {
           nclisten <port> [secs]      Wait for one inbound TCP connection, show what it sends
           ncudplisten <port> [secs]   Wait for one inbound UDP datagram, show sender + data
           help                       Show this text
+          hashhelp                   Show hash/crypto command list (hash, crack, bruteforce, etc.)
     """.trimIndent()
 
     suspend fun run(context: Context, commandLine: String): String {
@@ -98,7 +99,8 @@ object NetworkTools {
                     if (port == null || port !in 1..65535) "Invalid port" else ncListenUdp(port, secs)
                 }
             }
-            else -> "Unknown command \"${parts[0]}\" -- type \"help\" for a list"
+            "hashhelp" -> HashTools.helpText
+            else -> HashTools.run(parts) ?: "Unknown command \"${parts[0]}\" -- type \"help\" or \"hashhelp\" for a list"
         }
     }
 

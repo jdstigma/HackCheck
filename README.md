@@ -123,6 +123,32 @@ whether the network you're on looks trustworthy:
 All pure standard-library/Android APIs, no elevated access. Only use against
 hosts and networks you're authorized to test.
 
+### Hash tools (`hashhelp` for the list)
+
+A lightweight, local, CPU-only hash cracker in the same CLI — **not a hashcat
+port**. Hashcat's speed comes from GPU acceleration, which a sandboxed
+Android app can't get without root, and there's no official Android build of
+it. This does the same underlying job (recover a plaintext from a hash you
+already have, e.g. password recovery/auditing) with plain
+`java.security.MessageDigest`, deliberately scoped down so it can't hang the
+app: brute force is capped at length 6, a 50M-combination ceiling, and a
+60-second wall-clock timeout.
+
+- `hash <md5|sha1|sha256|sha512> <text>` — compute a hash
+- `hashid <hash>` — guess the likely hash type from format/length (purely
+  informational, no cracking)
+- `crack <algo> <hash> <word1> [word2...]` — dictionary attack against
+  words given on the command line
+- `bruteforce <algo> <hash> <charset> <maxLength>` — charset is a preset
+  (`digits`/`lower`/`upper`/`alnum`/`all`) or any literal custom character
+  string; maxLength capped at 6
+- `b64encode`/`b64decode`, `hexencode`/`hexdecode`, `urlencode`/`urldecode`
+  — companion encode/decode utilities
+
+Given the realistic performance ceiling (no GPU, CPU-only, length capped at
+6), this is only practical against short/weak hashes — genuinely useful for
+password recovery on something you control, not a real-world cracking rig.
+
 ## Build
 
 Standard Android Gradle project (Kotlin + Jetpack Compose, no third-party
