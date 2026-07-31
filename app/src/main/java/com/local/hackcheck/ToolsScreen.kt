@@ -34,9 +34,11 @@ fun ToolsScreen(
 ) {
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
         Text(
-            "No-root network recon: ping, DNS lookup, TCP port scan, local interface info. " +
-                "Type \"help\" for the command list. Only use against hosts/networks you're " +
-                "authorized to test.",
+            "No-root network recon: ping, DNS lookup, TCP port scan, netcat-style connect/listen, " +
+                "local interface info. Type \"help\" for the command list. Only use against " +
+                "hosts/networks you're authorized to test. The nclisten/ncudplisten commands " +
+                "open a port and wait for an inbound connection -- only ever displays what's " +
+                "received as text, never executes anything.",
             style = MaterialTheme.typography.bodySmall,
         )
 

@@ -4,15 +4,23 @@ import android.content.Context
 import android.net.wifi.WifiManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.net.DatagramPacket
+import java.net.DatagramSocket
 import java.net.Inet4Address
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.NetworkInterface
+import java.net.ServerSocket
 import java.net.Socket
+import java.net.SocketTimeoutException
 import java.util.concurrent.TimeUnit
 
 private const val MAX_PORT_SCAN_RANGE = 1024
 private const val PORT_SCAN_TIMEOUT_MS = 400
+private const val NC_CONNECT_TIMEOUT_MS = 5000
+private const val NC_READ_TIMEOUT_MS = 3000
+private const val NC_MAX_BYTES = 4096
+private const val NC_LISTEN_MAX_SECONDS = 120
 
 /** No-root network recon commands for the in-app CLI. All standard Java/Android APIs or
  *  shelling out to the device's own system ping binary -- no raw sockets, no elevated access. */
@@ -24,6 +32,10 @@ object NetworkTools {
           dns <host>                 Resolve a hostname to its IP address(es)
           portscan <host> <start> <end>   TCP connect scan (max $MAX_PORT_SCAN_RANGE ports/run)
           myip                       This device's local network interfaces/addresses
+          nc <host> <port> [msg]      TCP connect, optionally send msg, show what comes back
+          ncudp <host> <port> [msg]   Same as nc but UDP
+          nclisten <port> [secs]      Wait for one inbound TCP connection, show what it sends
+          ncudplisten <port> [secs]   Wait for one inbound UDP datagram, show sender + data
           help                       Show this text
     """.trimIndent()
 
@@ -54,6 +66,38 @@ object NetworkTools {
                 }
             }
             "myip", "ifconfig" -> myIp(context)
+            "nc", "netcat" -> {
+                if (parts.size < 3) "Usage: nc <host> <port> [message]"
+                else {
+                    val port = parts[2].toIntOrNull()
+                    if (port == null || port !in 1..65535) "Invalid port"
+                    else ncTcp(parts[1], port, parts.drop(3).joinToString(" ").ifBlank { null })
+                }
+            }
+            "ncudp" -> {
+                if (parts.size < 3) "Usage: ncudp <host> <port> [message]"
+                else {
+                    val port = parts[2].toIntOrNull()
+                    if (port == null || port !in 1..65535) "Invalid port"
+                    else ncUdp(parts[1], port, parts.drop(3).joinToString(" ").ifBlank { null })
+                }
+            }
+            "nclisten" -> {
+                if (parts.size < 2) "Usage: nclisten <port> [seconds]"
+                else {
+                    val port = parts[1].toIntOrNull()
+                    val secs = parts.getOrNull(2)?.toIntOrNull()?.coerceIn(1, NC_LISTEN_MAX_SECONDS) ?: 30
+                    if (port == null || port !in 1..65535) "Invalid port" else ncListenTcp(port, secs)
+                }
+            }
+            "ncudplisten" -> {
+                if (parts.size < 2) "Usage: ncudplisten <port> [seconds]"
+                else {
+                    val port = parts[1].toIntOrNull()
+                    val secs = parts.getOrNull(2)?.toIntOrNull()?.coerceIn(1, NC_LISTEN_MAX_SECONDS) ?: 30
+                    if (port == null || port !in 1..65535) "Invalid port" else ncListenUdp(port, secs)
+                }
+            }
             else -> "Unknown command \"${parts[0]}\" -- type \"help\" for a list"
         }
     }
@@ -138,4 +182,101 @@ object NetworkTools {
 
     private fun intToIp(value: Int): String =
         "${value and 0xFF}.${(value shr 8) and 0xFF}.${(value shr 16) and 0xFF}.${(value shr 24) and 0xFF}"
+
+    private suspend fun ncTcp(host: String, port: Int, message: String?): String = withContext(Dispatchers.IO) {
+        try {
+            Socket().use { s ->
+                s.connect(InetSocketAddress(host, port), NC_CONNECT_TIMEOUT_MS)
+                val sentNote = if (message != null) {
+                    s.getOutputStream().write(message.toByteArray(Charsets.UTF_8))
+                    s.getOutputStream().flush()
+                    "Sent ${message.toByteArray(Charsets.UTF_8).size} bytes\n"
+                } else ""
+                s.soTimeout = NC_READ_TIMEOUT_MS
+                val received = readUpTo(s.getInputStream(), NC_MAX_BYTES)
+                "Connected to $host:$port\n$sentNote" + describeReceived(received)
+            }
+        } catch (e: Exception) {
+            "nc failed: ${e.javaClass.simpleName}: ${e.message}"
+        }
+    }
+
+    private suspend fun ncUdp(host: String, port: Int, message: String?): String = withContext(Dispatchers.IO) {
+        try {
+            DatagramSocket().use { s ->
+                val addr = InetAddress.getByName(host)
+                val payload = (message ?: "").toByteArray(Charsets.UTF_8)
+                s.send(DatagramPacket(payload, payload.size, addr, port))
+                s.soTimeout = NC_READ_TIMEOUT_MS
+                val buf = ByteArray(NC_MAX_BYTES)
+                val packet = DatagramPacket(buf, buf.size)
+                try {
+                    s.receive(packet)
+                    "Sent ${payload.size} bytes to $host:$port\n" +
+                        describeReceived(buf.copyOfRange(0, packet.length))
+                } catch (e: SocketTimeoutException) {
+                    "Sent ${payload.size} bytes to $host:$port\nNo response within ${NC_READ_TIMEOUT_MS}ms " +
+                        "(normal for UDP -- no delivery/response guarantee)"
+                }
+            }
+        } catch (e: Exception) {
+            "ncudp failed: ${e.javaClass.simpleName}: ${e.message}"
+        }
+    }
+
+    private suspend fun ncListenTcp(port: Int, timeoutSeconds: Int): String = withContext(Dispatchers.IO) {
+        try {
+            ServerSocket(port).use { server ->
+                server.soTimeout = timeoutSeconds * 1000
+                val client = try {
+                    server.accept()
+                } catch (e: SocketTimeoutException) {
+                    return@withContext "Listening on $port timed out after ${timeoutSeconds}s with no connection"
+                }
+                client.use { c ->
+                    c.soTimeout = NC_READ_TIMEOUT_MS
+                    val received = readUpTo(c.getInputStream(), NC_MAX_BYTES)
+                    "Connection from ${c.inetAddress?.hostAddress}:${c.port}\n" + describeReceived(received)
+                }
+            }
+        } catch (e: Exception) {
+            "nclisten failed: ${e.javaClass.simpleName}: ${e.message}"
+        }
+    }
+
+    private suspend fun ncListenUdp(port: Int, timeoutSeconds: Int): String = withContext(Dispatchers.IO) {
+        try {
+            DatagramSocket(port).use { s ->
+                s.soTimeout = timeoutSeconds * 1000
+                val buf = ByteArray(NC_MAX_BYTES)
+                val packet = DatagramPacket(buf, buf.size)
+                try {
+                    s.receive(packet)
+                    "Datagram from ${packet.address?.hostAddress}:${packet.port}\n" +
+                        describeReceived(buf.copyOfRange(0, packet.length))
+                } catch (e: SocketTimeoutException) {
+                    "Listening (UDP) on $port timed out after ${timeoutSeconds}s with no datagram"
+                }
+            }
+        } catch (e: Exception) {
+            "ncudplisten failed: ${e.javaClass.simpleName}: ${e.message}"
+        }
+    }
+
+    private fun readUpTo(input: java.io.InputStream, maxBytes: Int): ByteArray {
+        val buf = ByteArray(maxBytes)
+        return try {
+            val n = input.read(buf)
+            if (n <= 0) ByteArray(0) else buf.copyOfRange(0, n)
+        } catch (e: SocketTimeoutException) {
+            ByteArray(0)
+        } catch (e: Exception) {
+            ByteArray(0)
+        }
+    }
+
+    private fun describeReceived(data: ByteArray): String {
+        if (data.isEmpty()) return "No data received"
+        return "Received ${data.size} bytes:\n${String(data, Charsets.UTF_8)}"
+    }
 }

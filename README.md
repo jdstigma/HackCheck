@@ -110,6 +110,14 @@ whether the network you're on looks trustworthy:
 - `portscan <host> <start> <end>` — TCP connect scan, capped at 1024 ports
   per run
 - `myip` — local network interfaces + WiFi gateway/DNS servers
+- `nc <host> <port> [message]` — netcat-style: TCP connect, optionally send
+  a message, show whatever comes back (banner grabbing, manual protocol
+  probing)
+- `ncudp <host> <port> [message]` — same as `nc` but UDP
+- `nclisten <port> [seconds]` — open a TCP port and wait for one inbound
+  connection, show the remote address and whatever it sends. Only ever
+  displays received bytes as text — never executes anything.
+- `ncudplisten <port> [seconds]` — same but UDP
 - `help` — command list
 
 All pure standard-library/Android APIs, no elevated access. Only use against
