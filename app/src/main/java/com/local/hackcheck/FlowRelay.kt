@@ -10,6 +10,7 @@ import java.net.DatagramSocket
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.Socket
+import java.util.concurrent.ExecutorService
 import kotlin.random.Random
 
 /** Shared context every flow needs: how to reach the real network and write back to the TUN. */
@@ -18,6 +19,7 @@ class FlowContext(
     val vpnService: VpnService,
     val tunOut: FileOutputStream,
     val tunIp: ByteArray,
+    val executor: ExecutorService,
     val onFlowClosed: (protocol: String, app: String, remote: String, sent: Long, received: Long, durationMs: Long) -> Unit,
 )
 
@@ -58,7 +60,7 @@ class UdpFlow(
 
     init {
         val remoteAddr = InetAddress.getByAddress(remoteIp)
-        Thread {
+        fc.executor.submit {
             try {
                 val buf = ByteArray(65535)
                 while (!closed) {
@@ -75,7 +77,7 @@ class UdpFlow(
             } catch (e: Exception) {
                 // best-effort
             }
-        }.start()
+        }
         // fire-and-forget target for send(); using a connected socket keeps send() simple
         socket.connect(remoteAddr, remotePort)
     }
@@ -136,7 +138,7 @@ class TcpFlow(
         // so a slow/failed connect doesn't stall the TUN read loop.
         writeTcp(syn = true, ack = true, fin = false, rst = false, seq = ourSeq, ackNum = deviceSeq)
         ourSeq += 1
-        Thread {
+        fc.executor.submit {
             try {
                 val s = Socket()
                 fc.vpnService.protect(s)
@@ -155,7 +157,7 @@ class TcpFlow(
             } catch (e: Exception) {
                 reset()
             }
-        }.start()
+        }
     }
 
     /** Called when the device's ACK completing the handshake arrives, or with data segments. */

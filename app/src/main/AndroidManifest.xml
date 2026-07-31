@@ -28,8 +28,12 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
-    <!-- Packet capture: local VpnService-based relay opens real outbound sockets itself. -->
+    <!-- Packet capture: local VpnService-based relay opens real outbound sockets itself.
+         Uses foregroundServiceType "specialUse" rather than "dataSync": dataSync carries a
+         6-hour-per-24-hours OS abuse-prevention budget meant for short periodic syncs, which
+         doesn't fit a capture session meant to run for extended periods. -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
 
     <application
         android:allowBackup="false"
@@ -67,7 +71,10 @@
             android:name=".CaptureVpnService"
             android:exported="true"
             android:permission="android.permission.BIND_VPN_SERVICE"
-            android:foregroundServiceType="dataSync">
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="local-network-traffic-capture-for-security-diagnostics" />
             <intent-filter>
                 <action android:name="android.net.VpnService" />
             </intent-filter>
