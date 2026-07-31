@@ -134,10 +134,11 @@ class TcpFlow(
     private var appLabel: String? = null
 
     init {
-        // SYN-ACK back to the device immediately; the real connection happens in the background
-        // so a slow/failed connect doesn't stall the TUN read loop.
-        writeTcp(syn = true, ack = true, fin = false, rst = false, seq = ourSeq, ackNum = deviceSeq)
-        ourSeq += 1
+        // Connect to the real backend BEFORE telling the device the connection is ready. Sending
+        // the SYN-ACK first (the original approach) let the device's TCP stack think the
+        // handshake was done and immediately send its first data (a protocol hello/handshake --
+        // very common) while `socket` was still null, silently dropping it via the `?.write()`
+        // no-op below and stalling the connection forever. Connecting first removes the race.
         fc.executor.submit {
             try {
                 val s = Socket()
@@ -145,6 +146,8 @@ class TcpFlow(
                 s.connect(InetSocketAddress(InetAddress.getByAddress(remoteIp), remotePort), 8000)
                 socket = s
                 appLabel = resolveAppLabel(fc.context, PROTO_TCP, localPort, ipToString(remoteIp), remotePort)
+                writeTcp(syn = true, ack = true, fin = false, rst = false, seq = ourSeq, ackNum = deviceSeq)
+                ourSeq += 1
                 val input = s.getInputStream()
                 val buf = ByteArray(16384)
                 while (!closed) {
@@ -204,7 +207,9 @@ class TcpFlow(
 
     private fun reset() {
         if (closed) return
-        writeTcp(syn = false, ack = false, fin = false, rst = true, seq = ourSeq, ackNum = deviceSeq)
+        // RST+ACK (not a bare RST) so a device still waiting on the original SYN sees this as a
+        // proper connection-refused response instead of an unexpected/ignorable segment.
+        writeTcp(syn = false, ack = true, fin = false, rst = true, seq = ourSeq, ackNum = deviceSeq)
         teardown(logIt = true)
     }
 
