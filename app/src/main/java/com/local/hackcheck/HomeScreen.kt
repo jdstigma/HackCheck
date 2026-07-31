@@ -27,7 +27,9 @@ fun HomeScreen(
         MenuButton("App Scan", scanSubtitle) { onOpen(Screen.Scan) }
         MenuButton("Network & Devices", networkSubtitle) { onOpen(Screen.Network) }
         MenuButton("Background Monitoring", monitorSubtitle) { onOpen(Screen.Monitor) }
-        MenuButton("Traffic Capture", captureSubtitle) { onOpen(Screen.Capture) }
+        if (CAPTURE_FEATURE_ENABLED) {
+            MenuButton("Traffic Capture", captureSubtitle) { onOpen(Screen.Capture) }
+        }
     }
 }
 
