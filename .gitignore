@@ -26,6 +26,6 @@ __pycache__/
 /analysis/forensics/.venv-aleapp/
 /analysis/forensics/*.exe
 /analysis/forensics/checksums.txt
-/analysis/forensics/androidqf_output/
-/analysis/forensics/mvt_results/
-/analysis/forensics/aleapp_results/
+/analysis/forensics/androidqf_output*/
+/analysis/forensics/mvt_results*/
+/analysis/forensics/aleapp_results*/
