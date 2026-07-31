@@ -143,12 +143,11 @@ class TcpFlow(
         // very common) while `socket` was still null, silently dropping it via the `?.write()`
         // no-op below and stalling the connection forever. Connecting first removes the race.
         fc.executor.submit {
+            val remoteStr = "${ipToString(remoteIp)}:$remotePort"
             try {
                 val s = Socket()
-                val protected = fc.vpnService.protect(s)
-                if (!protected) {
-                    Log.w(TAG, "protect() returned false for ${ipToString(remoteIp)}:$remotePort")
-                }
+                val protectedOk = fc.vpnService.protect(s)
+                CaptureLog.appendFlow(fc.context, "tcp_diag", "protect=$protectedOk", remoteStr, 0, 0, 0)
                 s.connect(InetSocketAddress(InetAddress.getByAddress(remoteIp), remotePort), 8000)
                 socket = s
                 appLabel = resolveAppLabel(fc.context, PROTO_TCP, localPort, ipToString(remoteIp), remotePort)
@@ -164,7 +163,11 @@ class TcpFlow(
                 }
                 finish()
             } catch (e: Exception) {
-                Log.w(TAG, "TCP connect failed for ${ipToString(remoteIp)}:$remotePort", e)
+                Log.w(TAG, "TCP connect failed for $remoteStr", e)
+                CaptureLog.appendFlow(
+                    fc.context, "tcp_error",
+                    "${e.javaClass.simpleName}: ${e.message}", remoteStr, 0, 0, 0,
+                )
                 reset()
             }
         }
