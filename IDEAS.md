@@ -33,6 +33,9 @@ _(moved here when picked up)_
 - Split single scrolling screen into a home menu + 3 independent screens (Scan / Network & Devices / Monitoring), each with its own export
 - Two-line layout for the monitoring interval button row
 - Icon redesign: replaced magnifying-glass foreground (read as "stalker app") with a checkmark (protective/verified framing)
+- Network Tools screen: in-app CLI (`Screen.Tools`) with no-root recon commands — `ping`/`dns`/`portscan`/`myip`, netcat-style `nc`/`ncudp`/`nclisten`/`ncudplisten` (display-only, deliberately no `-e /bin/sh`-style execution)
+- Hash tools in the same CLI: `hash`/`hashid`/`crack`/`bruteforce` (pure Kotlin `MessageDigest`, not a hashcat port — no GPU access on Android — scoped with a length-6 cap, 50M-combination ceiling, 60s timeout) plus base64/hex/URL encode-decode
+- PC-side MVT + ALEAPP forensics companion (`analysis/forensics/`) — setup script (isolated venvs per tool, since MVT and ALEAPP pin conflicting `packaging` versions — confirmed by actually running the installer), AndroidQF acquisition workflow, corrected ALEAPP CLI flags after verifying against its actual `--help` output. MVT successfully downloaded its real IOC set including a dedicated Stalkerware indicators feed. In-app `forensics` command points to the PC-side workflow (these are Python tools, can't run inside the Android app itself).
 
 ---
 

@@ -29,3 +29,11 @@ python analysis/analyze_capture.py scan_results
 Outputs land in `scan_results/capture_analysis/` (pivot CSVs + PNG charts).
 That whole `scan_results/` tree is gitignored — never commit real capture
 data, this repo is public.
+
+## forensics/
+
+A separate, deeper companion: MVT (Mobile Verification Toolkit) + ALEAPP,
+for a full device acquisition and analysis against known spyware/
+stalkerware indicators — not just what HackCheck's own app-space scan can
+see. See `forensics/README.md` for the full setup + workflow. Also PC-side,
+also gitignored output — same rule, never commit real device data.

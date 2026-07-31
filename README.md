@@ -149,6 +149,16 @@ Given the realistic performance ceiling (no GPU, CPU-only, length capped at
 6), this is only practical against short/weak hashes — genuinely useful for
 password recovery on something you control, not a real-world cracking rig.
 
+### Deep forensics (`forensics` command)
+
+Type `forensics` in the CLI for a pointer to `analysis/forensics/` in this
+repo — a PC-side (not in-app; these are Python tools that need a full
+device acquisition, not just app-space access) setup for **MVT** (Mobile
+Verification Toolkit) and **ALEAPP**, for analyzing this device against
+published spyware/stalkerware indicators of compromise, and parsing
+Android's Intrusion Logging data if this device has it enabled. See
+`analysis/forensics/README.md` for the full workflow.
+
 ## Build
 
 Standard Android Gradle project (Kotlin + Jetpack Compose, no third-party

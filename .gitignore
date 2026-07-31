@@ -19,3 +19,10 @@ local.properties
 /scan_results/
 __pycache__/
 *.pyc
+
+# PC-side forensics companion: cloned tool + real device acquisition data, never commit.
+/analysis/forensics/ALEAPP/
+/analysis/forensics/*.exe
+/analysis/forensics/androidqf_output/
+/analysis/forensics/mvt_results/
+/analysis/forensics/aleapp_results/

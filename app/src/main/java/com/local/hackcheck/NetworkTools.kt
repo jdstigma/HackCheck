@@ -38,6 +38,23 @@ object NetworkTools {
           ncudplisten <port> [secs]   Wait for one inbound UDP datagram, show sender + data
           help                       Show this text
           hashhelp                   Show hash/crypto command list (hash, crack, bruteforce, etc.)
+          forensics                  How to run MVT/ALEAPP deep analysis on this device (PC-side)
+    """.trimIndent()
+
+    private val forensicsText = """
+        MVT (Mobile Verification Toolkit) and ALEAPP are PC-side Python tools -- they
+        can't run inside this app, since they analyze a full device acquisition, not
+        just what's reachable from app-space. Run from a computer, with this device
+        connected via USB (adb, same as installing this app):
+
+          1. One-time setup: analysis/forensics/setup.ps1 (in the HackCheck repo)
+          2. Acquire: run androidqf.exe with the device connected
+          3. Analyze: mvt-android check-androidqf <output-folder>
+             (checks against known spyware/stalkerware indicators, and parses
+             Android's Intrusion Logging data if this device has it enabled)
+          4. Optional deeper pass: ALEAPP, same acquisition folder
+
+        See analysis/forensics/README.md in the repo for the full walkthrough.
     """.trimIndent()
 
     suspend fun run(context: Context, commandLine: String): String {
@@ -100,6 +117,7 @@ object NetworkTools {
                 }
             }
             "hashhelp" -> HashTools.helpText
+            "forensics" -> forensicsText
             else -> HashTools.run(parts) ?: "Unknown command \"${parts[0]}\" -- type \"help\" or \"hashhelp\" for a list"
         }
     }
