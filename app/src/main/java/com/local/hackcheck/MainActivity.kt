@@ -22,6 +22,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -31,6 +32,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 data class NetworkSnapshot(
     val wifi: WifiSnapshot?,
@@ -77,6 +79,15 @@ fun HackCheckApp() {
     var cellTowers by remember { mutableStateOf<List<CellTowerInfo>>(emptyList()) }
     var cellTowerLocations by remember { mutableStateOf<Map<Long, CellTowerLocation?>>(emptyMap()) }
     var checkingCellTowers by remember { mutableStateOf(false) }
+    val cellTowerHistoryDb = remember { CellTowerHistoryDb(context) }
+    var seenTowers by remember { mutableStateOf<List<SeenTower>>(emptyList()) }
+
+    // Load the persisted tower history once when the screen first composes,
+    // so the "X towers seen" count on Cell Tower Locator is accurate even
+    // before the user taps Check this session.
+    LaunchedEffect(Unit) {
+        seenTowers = withContext(Dispatchers.IO) { cellTowerHistoryDb.allSeenTowers() }
+    }
     val openCellIdApiKey = BuildConfig.OPENCELLID_API_KEY
 
     // Router backend state
@@ -149,6 +160,14 @@ fun HackCheckApp() {
                 cell.cellId to geolocateCellTower(cell, openCellIdApiKey)
             }
             cellTowerLocations = locations
+
+            val now = System.currentTimeMillis()
+            for (cell in cells) {
+                val location = locations[cell.cellId] ?: continue
+                cellTowerHistoryDb.recordSighting(cell, location, now)
+            }
+            seenTowers = cellTowerHistoryDb.allSeenTowers()
+
             checkingCellTowers = false
         }
     }
@@ -304,7 +323,13 @@ fun HackCheckApp() {
                     cells = cellTowers,
                     locations = cellTowerLocations,
                     checking = checkingCellTowers,
+                    seenTowerCount = seenTowers.size,
                     onCheck = { cellTowerPermissionLauncher.launch(networkPermissionsToRequest) },
+                    onViewHistory = { currentScreen = Screen.CellTowerHistory },
+                )
+
+                Screen.CellTowerHistory -> CellTowerHistoryScreen(
+                    towers = seenTowers,
                 )
 
                 Screen.Router -> RouterScreen(

@@ -76,23 +76,32 @@ dashboarding, independent of the Android app.
 - `GET /topology?since_minutes=60&limit_edges=200` -- aggregated graph data
   (nodes + edges) for the visualization below
 
-## Network topology visualization
+## Dashboard and network topology visualization
 
-Open `http://localhost:8000/static/topology.html` (once `main.py` is
-running) for a live force-directed graph of every endpoint your network
-has talked to in the selected time window -- green nodes are known
-devices (matched by MAC), blue nodes are external endpoints, and edge
-thickness scales with traffic volume. Multiple flows between the same
-src/dst pair are aggregated into one edge rather than drawn separately,
-so the graph stays readable.
+Two browser-based views live under `/static`, once `main.py` is running:
 
-The backend URL and time window are editable directly on the page (same
-pattern as the Android app's Router screen) since they'll differ per
-deployment. Built with vis-network (loaded from a CDN, no build step) --
-the endpoint aggregation logic (`/topology`) and the page's data-handling
-JS (`formatBytes`, `render`) were both tested against real API responses;
-the actual rendered graph itself hasn't been visually confirmed in a
-browser yet.
+- **`http://localhost:8000/static/dashboard.html`** -- top talkers, known
+  devices, and recent flows as readable tables. This is the main view for
+  day-to-day checking; start here.
+- **`http://localhost:8000/static/topology.html`** -- a force-directed
+  graph of every endpoint your network has talked to, green nodes are
+  known devices (matched by MAC), blue nodes are external endpoints, edge
+  thickness scales with traffic volume. Multiple flows between the same
+  src/dst pair aggregate into one edge rather than drawing separately, so
+  the graph stays readable.
+
+Both pages link to each other, and both have the backend URL and time
+window editable directly on the page (same pattern as the Android app's
+Router screen) since they'll differ per deployment.
+
+Built with vanilla JS + vis-network (topology graph only, loaded from a
+CDN, no build step). The data-handling logic in both pages (`formatBytes`,
+`escapeHtml`, the render functions, and the `/topology` endpoint's
+aggregation logic) was tested by extracting the JS and actually executing
+it against real API-shaped data -- including edge cases like null
+hostnames and HTML-escaping untrusted device-reported strings -- but the
+actual visual rendering/layout in a real browser hasn't been confirmed
+yet for either page.
 
 ## Known gaps / things to verify once you have a live ntopng instance
 

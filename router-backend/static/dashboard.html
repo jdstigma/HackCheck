@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>HackCheck -- Router Dashboard</title>
+<style>
+  body {
+    font-family: -apple-system, system-ui, sans-serif;
+    margin: 0;
+    background: #111318;
+    color: #e6e6e6;
+  }
+  header {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    padding: 12px 16px;
+    background: #1b1e26;
+    border-bottom: 1px solid #2c303a;
+    flex-wrap: wrap;
+  }
+  header h1 { font-size: 16px; margin: 0 16px 0 0; font-weight: 600; }
+  header input {
+    background: #262a34;
+    border: 1px solid #3a3f4b;
+    color: #e6e6e6;
+    padding: 6px 8px;
+    border-radius: 4px;
+  }
+  header input#baseUrl { width: 240px; }
+  header input#sinceMinutes { width: 60px; }
+  header button {
+    background: #3a6ea5;
+    border: none;
+    color: white;
+    padding: 7px 14px;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  header button:hover { background: #4a7fb5; }
+  header a { color: #7bb3e8; font-size: 13px; margin-left: auto; }
+  #status { font-size: 13px; color: #9aa0ac; }
+
+  main {
+    padding: 16px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+    gap: 16px;
+  }
+  section {
+    background: #1b1e26;
+    border: 1px solid #2c303a;
+    border-radius: 8px;
+    padding: 14px 16px;
+  }
+  section h2 {
+    font-size: 14px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #9aa0ac;
+    margin: 0 0 10px 0;
+  }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td {
+    text-align: left;
+    padding: 6px 8px;
+    border-bottom: 1px solid #262a34;
+  }
+  th { color: #9aa0ac; font-weight: 500; }
+  .empty { color: #6a707c; font-size: 13px; padding: 8px 0; }
+  .bytes { font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>HackCheck Router Dashboard</h1>
+  <label>Backend <input id="baseUrl" value="http://localhost:8000" /></label>
+  <label>Last <input id="sinceMinutes" type="number" value="60" min="1" /> min</label>
+  <button id="refreshBtn">Refresh</button>
+  <span id="status"></span>
+  <a href="/static/topology.html">View network topology graph &rarr;</a>
+</header>
+
+<main>
+  <section>
+    <h2>Top talkers</h2>
+    <div id="topTalkers"></div>
+  </section>
+
+  <section>
+    <h2>Known devices</h2>
+    <div id="devices"></div>
+  </section>
+
+  <section style="grid-column: 1 / -1;">
+    <h2>Recent flows</h2>
+    <div id="flows"></div>
+  </section>
+</main>
+
+<script>
+const statusEl = document.getElementById('status');
+
+function formatBytes(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  const kb = bytes / 1024;
+  if (kb < 1024) return kb.toFixed(1) + ' KB';
+  const mb = kb / 1024;
+  if (mb < 1024) return mb.toFixed(1) + ' MB';
+  return (mb / 1024).toFixed(2) + ' GB';
+}
+
+function escapeHtml(s) {
+  if (s === null || s === undefined) return '';
+  return String(s).replace(/[&<>"']/g, (c) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  }[c]));
+}
+
+function renderTopTalkers(rows) {
+  const el = document.getElementById('topTalkers');
+  if (!rows.length) { el.innerHTML = '<div class="empty">No traffic in this window yet.</div>'; return; }
+  el.innerHTML = `
+    <table>
+      <thead><tr><th>Device</th><th>MAC</th><th>Total traffic</th></tr></thead>
+      <tbody>
+        ${rows.map(r => `
+          <tr>
+            <td>${escapeHtml(r.hostname || '(unnamed)')}</td>
+            <td>${escapeHtml(r.mac_address || '?')}</td>
+            <td class="bytes">${formatBytes(r.total_bytes)}</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>`;
+}
+
+function renderDevices(rows) {
+  const el = document.getElementById('devices');
+  if (!rows.length) { el.innerHTML = '<div class="empty">No devices seen yet.</div>'; return; }
+  el.innerHTML = `
+    <table>
+      <thead><tr><th>Hostname</th><th>MAC</th><th>Last seen</th></tr></thead>
+      <tbody>
+        ${rows.map(d => `
+          <tr>
+            <td>${escapeHtml(d.hostname || '(unnamed)')}</td>
+            <td>${escapeHtml(d.mac_address)}</td>
+            <td>${escapeHtml(d.last_seen)}</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>`;
+}
+
+function renderFlows(rows) {
+  const el = document.getElementById('flows');
+  if (!rows.length) { el.innerHTML = '<div class="empty">No flows in this window yet.</div>'; return; }
+  el.innerHTML = `
+    <table>
+      <thead><tr><th>Time</th><th>Source</th><th>Destination</th><th>Protocol</th><th>Sent</th><th>Received</th></tr></thead>
+      <tbody>
+        ${rows.map(f => `
+          <tr>
+            <td>${escapeHtml(f.timestamp)}</td>
+            <td>${escapeHtml(f.src_ip)}</td>
+            <td>${escapeHtml(f.dst_ip)}${f.dst_port ? ':' + f.dst_port : ''}</td>
+            <td>${escapeHtml(f.protocol || '?')}</td>
+            <td class="bytes">${formatBytes(f.bytes_sent)}</td>
+            <td class="bytes">${formatBytes(f.bytes_recv)}</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>`;
+}
+
+async function fetchJson(url) {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`${url} returned ${res.status}`);
+  return res.json();
+}
+
+async function refresh() {
+  const baseUrl = document.getElementById('baseUrl').value.replace(/\/$/, '');
+  const since = document.getElementById('sinceMinutes').value || 60;
+
+  statusEl.textContent = 'Loading...';
+  try {
+    const [talkers, devices, flows] = await Promise.all([
+      fetchJson(`${baseUrl}/top-talkers?since_minutes=${since}&limit=10`),
+      fetchJson(`${baseUrl}/devices`),
+      fetchJson(`${baseUrl}/flows?since_minutes=${since}&limit=50`),
+    ]);
+    renderTopTalkers(talkers);
+    renderDevices(devices);
+    renderFlows(flows);
+    statusEl.textContent = `Updated -- ${devices.length} devices, ${flows.length} recent flows`;
+  } catch (err) {
+    statusEl.textContent = `Error: ${err.message}`;
+  }
+}
+
+document.getElementById('refreshBtn').addEventListener('click', refresh);
+refresh();
+</script>
+
+</body>
+</html>

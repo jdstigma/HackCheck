@@ -24,13 +24,21 @@ fun CellTowerScreen(
     cells: List<CellTowerInfo>,
     locations: Map<Long, CellTowerLocation?>,
     checking: Boolean,
+    seenTowerCount: Int,
     onCheck: () -> Unit,
+    onViewHistory: () -> Unit,
 ) {
     val context = LocalContext.current
 
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
         Button(onClick = onCheck, modifier = Modifier.fillMaxWidth(), enabled = !checking) {
             Text(if (checking) "Reading towers..." else "Check nearby cell towers")
+        }
+        OutlinedButton(
+            onClick = onViewHistory,
+            modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
+        ) {
+            Text("View my cell tower map ($seenTowerCount towers seen)")
         }
 
         Text(
