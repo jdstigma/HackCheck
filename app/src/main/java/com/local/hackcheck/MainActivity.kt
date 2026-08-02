@@ -79,6 +79,13 @@ fun HackCheckApp() {
     var checkingCellTowers by remember { mutableStateOf(false) }
     val openCellIdApiKey = BuildConfig.OPENCELLID_API_KEY
 
+    // Router backend state
+    var routerBaseUrl by remember { mutableStateOf(RouterPrefs.getBaseUrl(context)) }
+    var routerConnectionStatus by remember { mutableStateOf<String?>(null) }
+    var checkingRouter by remember { mutableStateOf(false) }
+    var topTalkers by remember { mutableStateOf<List<TopTalker>>(emptyList()) }
+    var routerDevices by remember { mutableStateOf<List<RouterDevice>>(emptyList()) }
+
     // Monitor state
     var monitoringRunning by remember { mutableStateOf(MonitorService.isRunning(context)) }
     var monitorLog by remember { mutableStateOf(MonitorLog.readAll(context)) }
@@ -140,6 +147,27 @@ fun HackCheckApp() {
         }
     }
 
+    fun checkRouterConnection() {
+        checkingRouter = true
+        routerConnectionStatus = null
+        RouterPrefs.setBaseUrl(context, routerBaseUrl)
+        scope.launch(Dispatchers.Default) {
+            val ok = RouterApi.healthCheck(routerBaseUrl)
+            routerConnectionStatus = if (ok) "Connected" else "Could not reach backend at $routerBaseUrl"
+            checkingRouter = false
+        }
+    }
+
+    fun refreshRouterData() {
+        checkingRouter = true
+        RouterPrefs.setBaseUrl(context, routerBaseUrl)
+        scope.launch(Dispatchers.Default) {
+            topTalkers = RouterApi.fetchTopTalkers(routerBaseUrl)
+            routerDevices = RouterApi.fetchDevices(routerBaseUrl)
+            checkingRouter = false
+        }
+    }
+
     val networkPermissionsToRequest = remember {
         buildList {
             add(android.Manifest.permission.READ_PHONE_STATE)
@@ -169,6 +197,11 @@ fun HackCheckApp() {
         checkingNetwork -> "Checking..."
         network == null -> "Not checked yet"
         else -> "Cell: ${network!!.cellState} · WiFi: ${network!!.wifi?.ssid ?: "none"}"
+    }
+    val routerSubtitle = when {
+        checkingRouter -> "Checking..."
+        topTalkers.isEmpty() && routerDevices.isEmpty() -> "Not checked yet"
+        else -> "${routerDevices.size} devices, ${topTalkers.size} top talkers"
     }
     val cellTowerSubtitle = when {
         checkingCellTowers -> "Checking..."
@@ -205,6 +238,7 @@ fun HackCheckApp() {
                     scanSubtitle = scanSubtitle,
                     networkSubtitle = networkSubtitle,
                     cellTowerSubtitle = cellTowerSubtitle,
+                    routerSubtitle = routerSubtitle,
                     monitorSubtitle = monitorSubtitle,
                     captureSubtitle = captureSubtitle,
                     toolsSubtitle = toolsSubtitle,
@@ -255,6 +289,17 @@ fun HackCheckApp() {
                     locations = cellTowerLocations,
                     checking = checkingCellTowers,
                     onCheck = { cellTowerPermissionLauncher.launch(networkPermissionsToRequest) },
+                )
+
+                Screen.Router -> RouterScreen(
+                    baseUrl = routerBaseUrl,
+                    onBaseUrlChange = { routerBaseUrl = it },
+                    connectionStatus = routerConnectionStatus,
+                    checking = checkingRouter,
+                    topTalkers = topTalkers,
+                    devices = routerDevices,
+                    onCheckConnection = { checkRouterConnection() },
+                    onRefresh = { refreshRouterData() },
                 )
 
                 Screen.Monitor -> MonitorScreen(

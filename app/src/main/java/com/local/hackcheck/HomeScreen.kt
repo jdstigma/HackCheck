@@ -17,6 +17,7 @@ fun HomeScreen(
     scanSubtitle: String,
     networkSubtitle: String,
     cellTowerSubtitle: String,
+    routerSubtitle: String,
     monitorSubtitle: String,
     captureSubtitle: String,
     toolsSubtitle: String,
@@ -29,6 +30,7 @@ fun HomeScreen(
         MenuButton("App Scan", scanSubtitle) { onOpen(Screen.Scan) }
         MenuButton("Network & Devices", networkSubtitle) { onOpen(Screen.Network) }
         MenuButton("Cell Tower Locator", cellTowerSubtitle) { onOpen(Screen.CellTower) }
+        MenuButton("Router", routerSubtitle) { onOpen(Screen.Router) }
         MenuButton("Background Monitoring", monitorSubtitle) { onOpen(Screen.Monitor) }
         if (CAPTURE_FEATURE_ENABLED) {
             MenuButton("Traffic Capture", captureSubtitle) { onOpen(Screen.Capture) }
