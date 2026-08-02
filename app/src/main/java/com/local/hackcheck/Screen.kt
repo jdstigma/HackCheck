@@ -8,6 +8,8 @@ enum class Screen(val title: String) {
     CellTowerHistory("My Cell Tower Map"),
     Router("Router"),
     RouterDeviceDetail("Device Detail"),
+    NtopngBoxInfo("Box Requirements"),
+    NtopngBoxSetup("Box Configuration"),
     Monitor("Background Monitoring"),
     Capture("Traffic Capture"),
     Tools("Network Tools"),

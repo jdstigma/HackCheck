@@ -103,6 +103,12 @@ fun HackCheckApp() {
     var selectedDeviceFlows by remember { mutableStateOf<List<RouterFlow>>(emptyList()) }
     var loadingDeviceDetail by remember { mutableStateOf(false) }
 
+    // ntopng box control state
+    var ntopngBoxRunning by remember { mutableStateOf<Boolean?>(null) }
+    var checkingNtopngStatus by remember { mutableStateOf(false) }
+    var ntopngActionInProgress by remember { mutableStateOf(false) }
+    var ntopngLastActionResult by remember { mutableStateOf<String?>(null) }
+
     // Monitor state
     var monitoringRunning by remember { mutableStateOf(MonitorService.isRunning(context)) }
     var monitorLog by remember { mutableStateOf(MonitorLog.readAll(context)) }
@@ -200,6 +206,36 @@ fun HackCheckApp() {
             selectedDeviceSummary = RouterApi.fetchTrafficSummary(routerBaseUrl, device.id)
             selectedDeviceFlows = RouterApi.fetchFlows(routerBaseUrl, deviceId = device.id)
             loadingDeviceDetail = false
+        }
+    }
+
+    fun checkNtopngStatus() {
+        checkingNtopngStatus = true
+        scope.launch(Dispatchers.Default) {
+            ntopngBoxRunning = RouterApi.ntopngStatus(routerBaseUrl)
+            checkingNtopngStatus = false
+        }
+    }
+
+    fun startNtopngBox() {
+        ntopngActionInProgress = true
+        ntopngLastActionResult = null
+        scope.launch(Dispatchers.Default) {
+            val result = RouterApi.startNtopngBox(routerBaseUrl)
+            ntopngLastActionResult = result.message
+            ntopngActionInProgress = false
+            checkNtopngStatus()
+        }
+    }
+
+    fun stopNtopngBox() {
+        ntopngActionInProgress = true
+        ntopngLastActionResult = null
+        scope.launch(Dispatchers.Default) {
+            val result = RouterApi.stopNtopngBox(routerBaseUrl)
+            ntopngLastActionResult = result.message
+            ntopngActionInProgress = false
+            checkNtopngStatus()
         }
     }
 
@@ -341,6 +377,11 @@ fun HackCheckApp() {
                     devices = routerDevices,
                     onCheckConnection = { checkRouterConnection() },
                     onRefresh = { refreshRouterData() },
+                    onOpenBoxInfo = { currentScreen = Screen.NtopngBoxInfo },
+                    onOpenBoxSetup = {
+                        currentScreen = Screen.NtopngBoxSetup
+                        checkNtopngStatus()
+                    },
                     onDeviceClick = { device ->
                         currentScreen = Screen.RouterDeviceDetail
                         loadDeviceDetail(device)
@@ -354,6 +395,18 @@ fun HackCheckApp() {
                     loading = loadingDeviceDetail,
                     onRefresh = { selectedRouterDevice?.let { loadDeviceDetail(it) } },
                     onBack = { currentScreen = Screen.Router },
+                )
+
+                Screen.NtopngBoxInfo -> NtopngBoxInfoScreen()
+
+                Screen.NtopngBoxSetup -> NtopngBoxSetupScreen(
+                    boxRunning = ntopngBoxRunning,
+                    checkingStatus = checkingNtopngStatus,
+                    actionInProgress = ntopngActionInProgress,
+                    lastActionResult = ntopngLastActionResult,
+                    onCheckStatus = { checkNtopngStatus() },
+                    onStart = { startNtopngBox() },
+                    onStop = { stopNtopngBox() },
                 )
 
                 Screen.Monitor -> MonitorScreen(

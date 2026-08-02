@@ -12,6 +12,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -31,6 +32,8 @@ fun RouterScreen(
     onCheckConnection: () -> Unit,
     onRefresh: () -> Unit,
     onDeviceClick: (RouterDevice) -> Unit,
+    onOpenBoxInfo: () -> Unit,
+    onOpenBoxSetup: () -> Unit,
 ) {
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
         Text("Backend URL", fontWeight = FontWeight.Bold)
@@ -110,6 +113,29 @@ fun RouterScreen(
                         .clickable { onDeviceClick(d) },
                 )
             }
+        }
+
+        Text(
+            "Hardware setup",
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(top = 24.dp, bottom = 4.dp),
+        )
+        Text(
+            "Optional: run your own capture box for real network-wide data.",
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.padding(bottom = 8.dp),
+        )
+        OutlinedButton(
+            onClick = onOpenBoxInfo,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text("What do I need to build the box?")
+        }
+        OutlinedButton(
+            onClick = onOpenBoxSetup,
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+        ) {
+            Text("Box configuration setup")
         }
     }
 }

@@ -24,6 +24,7 @@ from sqlalchemy.orm import Session
 
 from database import get_db
 from models import Device, NetworkFlow
+from ntopng_control import ntopng_status, start_ntopng, stop_ntopng
 
 app = FastAPI(title="HackCheck Router Backend")
 
@@ -230,3 +231,25 @@ def topology(
         "nodes": list(node_ids.values()),
         "edges": edges,
     }
+
+
+@app.get("/ntopng/status")
+def get_ntopng_status():
+    """Whether the local ntopng systemd service is running. Only
+    meaningful when this backend runs on the same box as ntopng --
+    see ntopng_control.py for the sudoers setup this depends on."""
+    return ntopng_status()
+
+
+@app.post("/ntopng/start")
+def post_ntopng_start():
+    """Starts the local ntopng systemd service. Requires the sudoers
+    entry documented in ntopng_control.py -- without it, this returns
+    ok: false with a clear error rather than silently failing."""
+    return start_ntopng()
+
+
+@app.post("/ntopng/stop")
+def post_ntopng_stop():
+    """Stops the local ntopng systemd service."""
+    return stop_ntopng()

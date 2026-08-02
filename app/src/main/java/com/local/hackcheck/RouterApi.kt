@@ -41,6 +41,11 @@ data class RouterFlow(
     val bytesRecv: Long,
 )
 
+data class NtopngControlResult(
+    val ok: Boolean,
+    val message: String,
+)
+
 /**
  * Thin client for the router-backend FastAPI service (see /router-backend
  * in the repo). Base URL is your backend's LAN address, e.g.
@@ -54,6 +59,7 @@ data class RouterFlow(
 object RouterApi {
 
     private const val TIMEOUT_MS = 6000
+    private const val POST_TIMEOUT_MS = 15000  // systemctl start/stop can take a few seconds
 
     private suspend fun getJson(url: String): Any? = withContext(Dispatchers.IO) {
         var conn: HttpURLConnection? = null
@@ -67,6 +73,28 @@ object RouterApi {
             val body = conn.inputStream.bufferedReader().readText()
             val trimmed = body.trim()
             if (trimmed.startsWith("[")) JSONArray(trimmed) else JSONObject(trimmed)
+        } catch (e: Exception) {
+            null
+        } finally {
+            conn?.disconnect()
+        }
+    }
+
+    /** POST with no body, used for the ntopng box start/stop controls.
+     *  Longer timeout than GET requests -- systemctl start/stop can take
+     *  a few seconds on a Pi, not just a normal API round-trip. */
+    private suspend fun postJson(url: String): JSONObject? = withContext(Dispatchers.IO) {
+        var conn: HttpURLConnection? = null
+        try {
+            conn = (URL(url).openConnection() as HttpURLConnection).apply {
+                connectTimeout = TIMEOUT_MS
+                readTimeout = POST_TIMEOUT_MS
+                requestMethod = "POST"
+                doOutput = false
+            }
+            if (conn.responseCode != HttpURLConnection.HTTP_OK) return@withContext null
+            val body = conn.inputStream.bufferedReader().readText()
+            JSONObject(body.trim())
         } catch (e: Exception) {
             null
         } finally {
@@ -143,5 +171,30 @@ object RouterApi {
                 bytesRecv = obj.optLong("bytes_recv"),
             )
         }
+    }
+
+    /** True if the ntopng systemd service is running -- only meaningful
+     *  when the backend runs on the same box as ntopng. False (rather
+     *  than throwing) if the backend is unreachable or the box doesn't
+     *  support control at all. */
+    suspend fun ntopngStatus(baseUrl: String): Boolean {
+        val result = getJson("$baseUrl/ntopng/status") as? JSONObject ?: return false
+        return result.optBoolean("active", false)
+    }
+
+    suspend fun startNtopngBox(baseUrl: String): NtopngControlResult {
+        val result = postJson("$baseUrl/ntopng/start")
+            ?: return NtopngControlResult(false, "Could not reach backend at $baseUrl")
+        val ok = result.optBoolean("ok", false)
+        val message = if (ok) "Started" else result.optString("stderr", "Failed to start -- check backend logs")
+        return NtopngControlResult(ok, message)
+    }
+
+    suspend fun stopNtopngBox(baseUrl: String): NtopngControlResult {
+        val result = postJson("$baseUrl/ntopng/stop")
+            ?: return NtopngControlResult(false, "Could not reach backend at $baseUrl")
+        val ok = result.optBoolean("ok", false)
+        val message = if (ok) "Stopped" else result.optString("stderr", "Failed to stop -- check backend logs")
+        return NtopngControlResult(ok, message)
     }
 }

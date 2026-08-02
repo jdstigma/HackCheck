@@ -75,6 +75,12 @@ dashboarding, independent of the Android app.
 - `GET /top-talkers?since_minutes=60&limit=10` -- devices ranked by bandwidth
 - `GET /topology?since_minutes=60&limit_edges=200` -- aggregated graph data
   (nodes + edges) for the visualization below
+- `GET /ntopng/status`, `POST /ntopng/start`, `POST /ntopng/stop` --
+  control the local ntopng systemd service. Only works when this backend
+  runs on the same box as ntopng, and requires the sudoers entry
+  documented at the top of `ntopng_control.py`. Without that sudoers
+  setup, these return a clear error rather than failing silently --
+  everything else in this backend works fine without it.
 
 ## Dashboard and network topology visualization
 
