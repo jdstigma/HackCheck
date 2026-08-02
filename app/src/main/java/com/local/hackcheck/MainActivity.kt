@@ -97,6 +97,12 @@ fun HackCheckApp() {
     var topTalkers by remember { mutableStateOf<List<TopTalker>>(emptyList()) }
     var routerDevices by remember { mutableStateOf<List<RouterDevice>>(emptyList()) }
 
+    // App data usage state (no hardware needed -- shown at the top of the
+    // Router screen as the no-setup alternative to the ntopng path below it)
+    var routerAppUsage by remember { mutableStateOf<DataUsageResult?>(null) }
+    var checkingRouterAppUsage by remember { mutableStateOf(false) }
+    var routerUsageAccessGranted by remember { mutableStateOf<Boolean?>(null) }
+
     // Router device detail state
     var selectedRouterDevice by remember { mutableStateOf<RouterDevice?>(null) }
     var selectedDeviceSummary by remember { mutableStateOf<TrafficSummary?>(null) }
@@ -175,6 +181,16 @@ fun HackCheckApp() {
             seenTowers = cellTowerHistoryDb.allSeenTowers()
 
             checkingCellTowers = false
+        }
+    }
+
+    fun runAppUsageCheck() {
+        checkingRouterAppUsage = true
+        scope.launch(Dispatchers.Default) {
+            val granted = hasUsageAccess(context)
+            routerUsageAccessGranted = granted
+            routerAppUsage = if (granted) dataUsageByApp(context) else null
+            checkingRouterAppUsage = false
         }
     }
 
@@ -381,6 +397,13 @@ fun HackCheckApp() {
                     onOpenBoxSetup = {
                         currentScreen = Screen.NtopngBoxSetup
                         checkNtopngStatus()
+                    },
+                    appUsage = routerAppUsage,
+                    checkingAppUsage = checkingRouterAppUsage,
+                    usageAccessGranted = routerUsageAccessGranted,
+                    onCheckAppUsage = { runAppUsageCheck() },
+                    onGrantUsageAccess = {
+                        context.startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
                     },
                     onDeviceClick = { device ->
                         currentScreen = Screen.RouterDeviceDetail

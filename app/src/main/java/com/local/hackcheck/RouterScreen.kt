@@ -34,9 +34,67 @@ fun RouterScreen(
     onDeviceClick: (RouterDevice) -> Unit,
     onOpenBoxInfo: () -> Unit,
     onOpenBoxSetup: () -> Unit,
+    appUsage: DataUsageResult?,
+    checkingAppUsage: Boolean,
+    usageAccessGranted: Boolean?,
+    onCheckAppUsage: () -> Unit,
+    onGrantUsageAccess: () -> Unit,
 ) {
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-        Text("Backend URL", fontWeight = FontWeight.Bold)
+        Text("App data usage", fontWeight = FontWeight.Bold)
+        Text(
+            "Works on any device right now -- no switch, box, or setup " +
+                "needed. Shows which apps have used the most data recently, " +
+                "using Android's own usage stats.",
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.padding(top = 4.dp),
+        )
+
+        if (usageAccessGranted == false) {
+            Text(
+                "Requires \"Usage access\" -- a special permission granted " +
+                    "in Settings, not the normal permission prompt.",
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(top = 6.dp),
+            )
+            Button(
+                onClick = onGrantUsageAccess,
+                modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
+            ) {
+                Text("Grant usage access")
+            }
+        }
+
+        Button(
+            onClick = onCheckAppUsage,
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+            enabled = !checkingAppUsage,
+        ) {
+            Text(if (checkingAppUsage) "Checking..." else "Check app data usage")
+        }
+
+        appUsage?.let { usage ->
+            Text(
+                "Last ${usage.windowDays} days " +
+                    "(WiFi ${if (usage.wifiAvailable) "\u2713" else "unavailable"}, " +
+                    "mobile ${if (usage.mobileAvailable) "\u2713" else "unavailable"}):",
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(top = 10.dp),
+            )
+            usage.rows.take(10).forEach { row ->
+                Text(
+                    "${row.label}: ${formatBytes(row.wifiBytes + row.mobileBytes)}",
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(top = 2.dp),
+                )
+            }
+        }
+
+        Text(
+            "Backend URL",
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(top = 24.dp),
+        )
         OutlinedTextField(
             value = baseUrl,
             onValueChange = onBaseUrlChange,
