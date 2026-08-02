@@ -73,6 +73,13 @@ fun HackCheckApp() {
     var checkingNetwork by remember { mutableStateOf(false) }
     var networkExportStatus by remember { mutableStateOf<String?>(null) }
 
+    // Cell tower state
+    var cellTowers by remember { mutableStateOf<List<CellTowerInfo>>(emptyList()) }
+    var cellTowerLocations by remember { mutableStateOf<Map<Long, CellTowerLocation?>>(emptyMap()) }
+    var checkingCellTowers by remember { mutableStateOf(false) }
+    // TODO: move to local.properties / BuildConfig rather than hardcoding before committing a real key
+    val openCellIdApiKey = "YOUR_OPENCELLID_KEY"
+
     // Monitor state
     var monitoringRunning by remember { mutableStateOf(MonitorService.isRunning(context)) }
     var monitorLog by remember { mutableStateOf(MonitorLog.readAll(context)) }
@@ -121,6 +128,19 @@ fun HackCheckApp() {
         }
     }
 
+    fun runCellTowerChecks() {
+        checkingCellTowers = true
+        scope.launch(Dispatchers.Default) {
+            val cells = visibleCellTowers(context)
+            cellTowers = cells
+            val locations = cells.associate { cell ->
+                cell.cellId to geolocateCellTower(cell, openCellIdApiKey)
+            }
+            cellTowerLocations = locations
+            checkingCellTowers = false
+        }
+    }
+
     val networkPermissionsToRequest = remember {
         buildList {
             add(android.Manifest.permission.READ_PHONE_STATE)
@@ -135,6 +155,11 @@ fun HackCheckApp() {
     ) {
         runNetworkChecks()
     }
+    val cellTowerPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions(),
+    ) {
+        runCellTowerChecks()
+    }
 
     val scanSubtitle = when {
         scanning -> "Scanning..."
@@ -145,6 +170,11 @@ fun HackCheckApp() {
         checkingNetwork -> "Checking..."
         network == null -> "Not checked yet"
         else -> "Cell: ${network!!.cellState} · WiFi: ${network!!.wifi?.ssid ?: "none"}"
+    }
+    val cellTowerSubtitle = when {
+        checkingCellTowers -> "Checking..."
+        cellTowers.isEmpty() -> "Not checked yet"
+        else -> "${cellTowers.size} visible, ${cellTowerLocations.values.count { it != null }} located"
     }
     val monitorSubtitle = if (monitoringRunning)
         "Running, ${monitorLog.size} events logged"
@@ -175,6 +205,7 @@ fun HackCheckApp() {
                 Screen.Home -> HomeScreen(
                     scanSubtitle = scanSubtitle,
                     networkSubtitle = networkSubtitle,
+                    cellTowerSubtitle = cellTowerSubtitle,
                     monitorSubtitle = monitorSubtitle,
                     captureSubtitle = captureSubtitle,
                     toolsSubtitle = toolsSubtitle,
@@ -218,6 +249,13 @@ fun HackCheckApp() {
                             networkExportStatus = path?.let { "Saved: $it" } ?: "Export failed"
                         }
                     },
+                )
+
+                Screen.CellTower -> CellTowerScreen(
+                    cells = cellTowers,
+                    locations = cellTowerLocations,
+                    checking = checkingCellTowers,
+                    onCheck = { cellTowerPermissionLauncher.launch(networkPermissionsToRequest) },
                 )
 
                 Screen.Monitor -> MonitorScreen(
