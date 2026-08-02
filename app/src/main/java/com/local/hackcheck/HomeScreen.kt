@@ -16,6 +16,7 @@ import androidx.compose.ui.unit.dp
 fun HomeScreen(
     scanSubtitle: String,
     networkSubtitle: String,
+    rfSweepSubtitle: String,
     cellTowerSubtitle: String,
     routerSubtitle: String,
     monitorSubtitle: String,
@@ -29,6 +30,7 @@ fun HomeScreen(
     ) {
         MenuButton("App Scan", scanSubtitle) { onOpen(Screen.Scan) }
         MenuButton("Network & Devices", networkSubtitle) { onOpen(Screen.Network) }
+        MenuButton("Wireless Sweep", rfSweepSubtitle) { onOpen(Screen.RfSweep) }
         MenuButton("Cell Tower Locator", cellTowerSubtitle) { onOpen(Screen.CellTower) }
         MenuButton("Router", routerSubtitle) { onOpen(Screen.Router) }
         MenuButton("Background Monitoring", monitorSubtitle) { onOpen(Screen.Monitor) }

@@ -13,10 +13,17 @@
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-    <!-- Legacy Bluetooth permissions for pre-Android-12 devices; BLUETOOTH_CONNECT covers 12+. -->
+    <!-- Legacy Bluetooth permissions for pre-Android-12 devices; BLUETOOTH_CONNECT/SCAN cover 12+. -->
     <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <!-- Scanning for ALL nearby BLE devices (not just paired ones), used by the RF/wireless
+         sweep feature to spot unusual BLE beacons/trackers. -->
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
+    <!-- Needed to actively trigger a WiFi scan (WifiManager.startScan()), not just read the
+         currently-connected network, used by the same RF/wireless sweep feature to spot
+         unusual/hidden access points. -->
+    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
     <!-- Special "Usage access" permission, granted via Settings, not the runtime dialog.
          Needed to query per-app data usage history via NetworkStatsManager. -->
     <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS"

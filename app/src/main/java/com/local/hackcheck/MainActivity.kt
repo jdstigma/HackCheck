@@ -75,6 +75,12 @@ fun HackCheckApp() {
     var checkingNetwork by remember { mutableStateOf(false) }
     var networkExportStatus by remember { mutableStateOf<String?>(null) }
 
+    // RF/wireless sweep state
+    var wifiNetworks by remember { mutableStateOf<List<NearbyWifiNetwork>>(emptyList()) }
+    var bleDevices by remember { mutableStateOf<List<NearbyBleDevice>>(emptyList()) }
+    var scanningWifi by remember { mutableStateOf(false) }
+    var scanningBle by remember { mutableStateOf(false) }
+
     // Cell tower state
     var cellTowers by remember { mutableStateOf<List<CellTowerInfo>>(emptyList()) }
     var cellTowerLocations by remember { mutableStateOf<Map<Long, CellTowerLocation?>>(emptyMap()) }
@@ -160,6 +166,22 @@ fun HackCheckApp() {
             )
             checkingNetwork = false
             network = snapshot
+        }
+    }
+
+    fun runWifiScan() {
+        scanningWifi = true
+        scope.launch(Dispatchers.Default) {
+            wifiNetworks = scanNearbyWifi(context)
+            scanningWifi = false
+        }
+    }
+
+    fun runBleScan() {
+        scanningBle = true
+        scope.launch(Dispatchers.Default) {
+            bleDevices = scanNearbyBle(context)
+            scanningBle = false
         }
     }
 
@@ -261,6 +283,7 @@ fun HackCheckApp() {
             add(android.Manifest.permission.ACCESS_FINE_LOCATION)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 add(android.Manifest.permission.BLUETOOTH_CONNECT)
+                add(android.Manifest.permission.BLUETOOTH_SCAN)
             }
         }.toTypedArray()
     }
@@ -273,6 +296,16 @@ fun HackCheckApp() {
         ActivityResultContracts.RequestMultiplePermissions(),
     ) {
         runCellTowerChecks()
+    }
+    val rfWifiPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions(),
+    ) {
+        runWifiScan()
+    }
+    val rfBlePermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions(),
+    ) {
+        runBleScan()
     }
 
     val scanSubtitle = when {
@@ -289,6 +322,11 @@ fun HackCheckApp() {
         checkingRouter -> "Checking..."
         topTalkers.isEmpty() && routerDevices.isEmpty() -> "Not checked yet"
         else -> "${routerDevices.size} devices, ${topTalkers.size} top talkers"
+    }
+    val rfSweepSubtitle = when {
+        scanningWifi || scanningBle -> "Scanning..."
+        wifiNetworks.isEmpty() && bleDevices.isEmpty() -> "Not checked yet"
+        else -> "${wifiNetworks.size} WiFi, ${bleDevices.size} BLE devices seen"
     }
     val cellTowerSubtitle = when {
         checkingCellTowers -> "Checking..."
@@ -324,6 +362,7 @@ fun HackCheckApp() {
                 Screen.Home -> HomeScreen(
                     scanSubtitle = scanSubtitle,
                     networkSubtitle = networkSubtitle,
+                    rfSweepSubtitle = rfSweepSubtitle,
                     cellTowerSubtitle = cellTowerSubtitle,
                     routerSubtitle = routerSubtitle,
                     monitorSubtitle = monitorSubtitle,
@@ -369,6 +408,15 @@ fun HackCheckApp() {
                             networkExportStatus = path?.let { "Saved: $it" } ?: "Export failed"
                         }
                     },
+                )
+
+                Screen.RfSweep -> RfSweepScreen(
+                    wifiNetworks = wifiNetworks,
+                    bleDevices = bleDevices,
+                    scanningWifi = scanningWifi,
+                    scanningBle = scanningBle,
+                    onScanWifi = { rfWifiPermissionLauncher.launch(networkPermissionsToRequest) },
+                    onScanBle = { rfBlePermissionLauncher.launch(networkPermissionsToRequest) },
                 )
 
                 Screen.CellTower -> CellTowerScreen(
