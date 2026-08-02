@@ -33,3 +33,7 @@ __pycache__/
 /analysis/forensics/androidqf_output*/
 /analysis/forensics/mvt_results*/
 /analysis/forensics/aleapp_results*/
+
+# Router backend: real DB credentials and API keys live in .env, never committed.
+/router-backend/.env
+/router-backend/.venv/
