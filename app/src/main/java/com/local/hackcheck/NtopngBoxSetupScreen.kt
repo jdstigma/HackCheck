@@ -6,16 +6,26 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+
+private const val SETUP_SCRIPT_CURL_COMMAND =
+    "curl -fsSL https://raw.githubusercontent.com/jdstigma/HackCheck/main/router-backend/setup-pi.sh | bash"
+private const val SETUP_SCRIPT_VIEW_URL =
+    "https://github.com/jdstigma/HackCheck/blob/main/router-backend/setup-pi.sh"
 
 @Composable
 fun NtopngBoxSetupScreen(
@@ -26,7 +36,10 @@ fun NtopngBoxSetupScreen(
     onCheckStatus: () -> Unit,
     onStart: () -> Unit,
     onStop: () -> Unit,
+    onViewSetupScript: () -> Unit,
 ) {
+    val clipboard = LocalClipboardManager.current
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -38,10 +51,52 @@ fun NtopngBoxSetupScreen(
             fontWeight = FontWeight.Bold,
             style = MaterialTheme.typography.titleMedium,
         )
+
+        Card(modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) {
+            Column(modifier = Modifier.padding(14.dp)) {
+                Text("Automated setup (recommended)", fontWeight = FontWeight.Medium)
+                Text(
+                    "Run this ON the Pi/PC itself (SSH in, or its own " +
+                        "terminal) -- not from this phone. It installs " +
+                        "ntopng, clones the repo, sets up router-backend's " +
+                        "Python environment, and configures the sudoers " +
+                        "entry needed for the Start/Stop buttons below.",
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(top = 4.dp, bottom = 10.dp),
+                )
+                SelectionContainer {
+                    Text(
+                        SETUP_SCRIPT_CURL_COMMAND,
+                        fontFamily = FontFamily.Monospace,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+                Row(modifier = Modifier.padding(top = 10.dp)) {
+                    Button(
+                        onClick = { clipboard.setText(AnnotatedString(SETUP_SCRIPT_CURL_COMMAND)) },
+                    ) {
+                        Text("Copy command")
+                    }
+                }
+                OutlinedButton(
+                    onClick = onViewSetupScript,
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                ) {
+                    Text("View script on GitHub first")
+                }
+                Text(
+                    "Worth reading before piping anything into bash, " +
+                        "including this one.",
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(top = 6.dp),
+                )
+            }
+        }
+
         Text(
-            "Steps to run once, directly on the Pi/PC (not from this app):",
-            style = MaterialTheme.typography.bodySmall,
-            modifier = Modifier.padding(top = 6.dp, bottom = 12.dp),
+            "Manual steps (if you'd rather not run the script)",
+            fontWeight = FontWeight.Medium,
+            modifier = Modifier.padding(top = 20.dp, bottom = 4.dp),
         )
 
         SetupStep(

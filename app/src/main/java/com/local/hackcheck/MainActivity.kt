@@ -430,6 +430,12 @@ fun HackCheckApp() {
                     onCheckStatus = { checkNtopngStatus() },
                     onStart = { startNtopngBox() },
                     onStop = { stopNtopngBox() },
+                    onViewSetupScript = {
+                        val uri = android.net.Uri.parse(
+                            "https://github.com/jdstigma/HackCheck/blob/main/router-backend/setup-pi.sh"
+                        )
+                        context.startActivity(Intent(Intent.ACTION_VIEW, uri))
+                    },
                 )
 
                 Screen.Monitor -> MonitorScreen(
