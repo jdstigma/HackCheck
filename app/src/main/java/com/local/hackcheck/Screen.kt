@@ -6,6 +6,7 @@ enum class Screen(val title: String) {
     Network("Network & Devices"),
     CellTower("Cell Tower Locator"),
     Router("Router"),
+    RouterDeviceDetail("Device Detail"),
     Monitor("Background Monitoring"),
     Capture("Traffic Capture"),
     Tools("Network Tools"),

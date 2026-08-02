@@ -29,6 +29,18 @@ data class TrafficSummary(
     val flowCount: Int,
 )
 
+data class RouterFlow(
+    val id: Int,
+    val deviceId: Int?,
+    val timestamp: String,
+    val srcIp: String,
+    val dstIp: String,
+    val dstPort: Int?,
+    val protocol: String?,
+    val bytesSent: Long,
+    val bytesRecv: Long,
+)
+
 /**
  * Thin client for the router-backend FastAPI service (see /router-backend
  * in the repo). Base URL is your backend's LAN address, e.g.
@@ -106,5 +118,30 @@ object RouterApi {
             totalBytesRecv = obj.optLong("total_bytes_recv"),
             flowCount = obj.optInt("flow_count"),
         )
+    }
+
+    suspend fun fetchFlows(
+        baseUrl: String,
+        deviceId: Int? = null,
+        sinceMinutes: Int = 60,
+        limit: Int = 100,
+    ): List<RouterFlow> {
+        val deviceParam = deviceId?.let { "&device_id=$it" } ?: ""
+        val url = "$baseUrl/flows?since_minutes=$sinceMinutes&limit=$limit$deviceParam"
+        val array = getJson(url) as? JSONArray ?: return emptyList()
+        return (0 until array.length()).mapNotNull { i ->
+            val obj = array.optJSONObject(i) ?: return@mapNotNull null
+            RouterFlow(
+                id = obj.optInt("id"),
+                deviceId = obj.optInt("device_id").takeIf { obj.has("device_id") && !obj.isNull("device_id") },
+                timestamp = obj.optString("timestamp"),
+                srcIp = obj.optString("src_ip"),
+                dstIp = obj.optString("dst_ip"),
+                dstPort = obj.optInt("dst_port").takeIf { obj.has("dst_port") && !obj.isNull("dst_port") },
+                protocol = obj.optString("protocol").takeIf { it != "null" && it.isNotBlank() },
+                bytesSent = obj.optLong("bytes_sent"),
+                bytesRecv = obj.optLong("bytes_recv"),
+            )
+        }
     }
 }

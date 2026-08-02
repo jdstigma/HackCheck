@@ -86,6 +86,12 @@ fun HackCheckApp() {
     var topTalkers by remember { mutableStateOf<List<TopTalker>>(emptyList()) }
     var routerDevices by remember { mutableStateOf<List<RouterDevice>>(emptyList()) }
 
+    // Router device detail state
+    var selectedRouterDevice by remember { mutableStateOf<RouterDevice?>(null) }
+    var selectedDeviceSummary by remember { mutableStateOf<TrafficSummary?>(null) }
+    var selectedDeviceFlows by remember { mutableStateOf<List<RouterFlow>>(emptyList()) }
+    var loadingDeviceDetail by remember { mutableStateOf(false) }
+
     // Monitor state
     var monitoringRunning by remember { mutableStateOf(MonitorService.isRunning(context)) }
     var monitorLog by remember { mutableStateOf(MonitorLog.readAll(context)) }
@@ -165,6 +171,16 @@ fun HackCheckApp() {
             topTalkers = RouterApi.fetchTopTalkers(routerBaseUrl)
             routerDevices = RouterApi.fetchDevices(routerBaseUrl)
             checkingRouter = false
+        }
+    }
+
+    fun loadDeviceDetail(device: RouterDevice) {
+        selectedRouterDevice = device
+        loadingDeviceDetail = true
+        scope.launch(Dispatchers.Default) {
+            selectedDeviceSummary = RouterApi.fetchTrafficSummary(routerBaseUrl, device.id)
+            selectedDeviceFlows = RouterApi.fetchFlows(routerBaseUrl, deviceId = device.id)
+            loadingDeviceDetail = false
         }
     }
 
@@ -300,6 +316,19 @@ fun HackCheckApp() {
                     devices = routerDevices,
                     onCheckConnection = { checkRouterConnection() },
                     onRefresh = { refreshRouterData() },
+                    onDeviceClick = { device ->
+                        currentScreen = Screen.RouterDeviceDetail
+                        loadDeviceDetail(device)
+                    },
+                )
+
+                Screen.RouterDeviceDetail -> RouterDeviceDetailScreen(
+                    device = selectedRouterDevice,
+                    summary = selectedDeviceSummary,
+                    flows = selectedDeviceFlows,
+                    loading = loadingDeviceDetail,
+                    onRefresh = { selectedRouterDevice?.let { loadDeviceDetail(it) } },
+                    onBack = { currentScreen = Screen.Router },
                 )
 
                 Screen.Monitor -> MonitorScreen(

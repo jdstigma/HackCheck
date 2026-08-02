@@ -1,5 +1,6 @@
 package com.local.hackcheck
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -29,6 +30,7 @@ fun RouterScreen(
     devices: List<RouterDevice>,
     onCheckConnection: () -> Unit,
     onRefresh: () -> Unit,
+    onDeviceClick: (RouterDevice) -> Unit,
 ) {
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
         Text("Backend URL", fontWeight = FontWeight.Bold)
@@ -102,7 +104,10 @@ fun RouterScreen(
                 Text(
                     "${d.hostname ?: "(unnamed)"} -- ${d.macAddress} -- last seen ${d.lastSeen}",
                     style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.padding(vertical = 2.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 6.dp)
+                        .clickable { onDeviceClick(d) },
                 )
             }
         }
