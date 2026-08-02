@@ -21,10 +21,12 @@ TP-Link switch (port mirroring)
    Postgres  (devices + network_flows tables)
         |
         v
-   main.py (FastAPI)  (serves /devices, /flows, /top-talkers, etc.)
+   main.py (FastAPI)  (serves /devices, /flows, /top-talkers, /topology, etc.)
         |
-        v
-   HackCheck Android app  (Router screen, calls the API over your LAN)
+        +----------------------------------+
+        v                                  v
+   HackCheck Android app           topology.html
+   (Router screen, over LAN)       (network graph, in a browser)
 ```
 
 Postgres and the API can also be queried directly from Power BI for
@@ -71,6 +73,26 @@ dashboarding, independent of the Android app.
 - `GET /flows?since_minutes=60&device_id=&limit=500` -- raw flow records
 - `GET /devices/{id}/traffic-summary?since_minutes=60` -- totals for one device
 - `GET /top-talkers?since_minutes=60&limit=10` -- devices ranked by bandwidth
+- `GET /topology?since_minutes=60&limit_edges=200` -- aggregated graph data
+  (nodes + edges) for the visualization below
+
+## Network topology visualization
+
+Open `http://localhost:8000/static/topology.html` (once `main.py` is
+running) for a live force-directed graph of every endpoint your network
+has talked to in the selected time window -- green nodes are known
+devices (matched by MAC), blue nodes are external endpoints, and edge
+thickness scales with traffic volume. Multiple flows between the same
+src/dst pair are aggregated into one edge rather than drawn separately,
+so the graph stays readable.
+
+The backend URL and time window are editable directly on the page (same
+pattern as the Android app's Router screen) since they'll differ per
+deployment. Built with vis-network (loaded from a CDN, no build step) --
+the endpoint aggregation logic (`/topology`) and the page's data-handling
+JS (`formatBytes`, `render`) were both tested against real API responses;
+the actual rendered graph itself hasn't been visually confirmed in a
+browser yet.
 
 ## Known gaps / things to verify once you have a live ntopng instance
 

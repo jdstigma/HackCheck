@@ -17,6 +17,8 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import Depends, FastAPI, Query
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -24,6 +26,20 @@ from database import get_db
 from models import Device, NetworkFlow
 
 app = FastAPI(title="HackCheck Router Backend")
+
+# Permissive CORS so the topology visualization page (static/topology.html)
+# can call this API from a browser -- whether served by this same app at
+# /static/topology.html, or opened directly as a local file (file:// origin).
+# Fine for a home-LAN tool behind your router's firewall; tighten this
+# (specific origins, not "*") before exposing the API beyond your LAN.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["GET"],
+    allow_headers=["*"],
+)
+
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
 @app.get("/health")
@@ -145,3 +161,72 @@ def top_talkers(
         }
         for r in rows
     ]
+
+
+@app.get("/topology")
+def topology(
+    since_minutes: int = Query(60, description="Look back this many minutes"),
+    limit_edges: int = Query(200, le=2000, description="Cap on distinct src->dst pairs returned"),
+    db: Session = Depends(get_db),
+):
+    """Network graph data for visualization: unique endpoints (nodes) and
+    aggregated traffic between them (edges), for the topology.html page.
+
+    An "edge" here is one src_ip -> dst_ip pair, with per-pair flow count
+    and total bytes summed across every matching flow in the window --
+    not one edge per raw flow row, which would make the graph unreadable
+    for anything but a nearly idle network.
+    """
+    cutoff = datetime.now(timezone.utc) - timedelta(minutes=since_minutes)
+
+    edge_rows = (
+        db.query(
+            NetworkFlow.src_ip,
+            NetworkFlow.dst_ip,
+            NetworkFlow.device_id,
+            func.count(NetworkFlow.id).label("flow_count"),
+            func.coalesce(func.sum(NetworkFlow.bytes_sent + NetworkFlow.bytes_recv), 0).label("total_bytes"),
+        )
+        .filter(NetworkFlow.timestamp >= cutoff)
+        .group_by(NetworkFlow.src_ip, NetworkFlow.dst_ip, NetworkFlow.device_id)
+        .order_by(func.sum(NetworkFlow.bytes_sent + NetworkFlow.bytes_recv).desc())
+        .limit(limit_edges)
+        .all()
+    )
+
+    device_ids = {r.device_id for r in edge_rows if r.device_id is not None}
+    devices_by_id = {d.id: d for d in db.query(Device).filter(Device.id.in_(device_ids)).all()}
+
+    # Build the node set from every IP that appears as either a source or
+    # destination -- a node is just an IP address; devices give some nodes
+    # a friendlier label (hostname) where we have one.
+    node_ids: dict[str, dict] = {}
+
+    def ensure_node(ip: str, device_id: Optional[int]):
+        if ip in node_ids:
+            return
+        device = devices_by_id.get(device_id) if device_id is not None else None
+        node_ids[ip] = {
+            "id": ip,
+            "label": device.hostname if device and device.hostname else ip,
+            "is_known_device": device is not None,
+        }
+
+    edges = []
+    for r in edge_rows:
+        ensure_node(r.src_ip, r.device_id)
+        ensure_node(r.dst_ip, None)  # destination is rarely a known local device
+        edges.append(
+            {
+                "source": r.src_ip,
+                "target": r.dst_ip,
+                "flow_count": r.flow_count,
+                "total_bytes": r.total_bytes,
+            }
+        )
+
+    return {
+        "since_minutes": since_minutes,
+        "nodes": list(node_ids.values()),
+        "edges": edges,
+    }

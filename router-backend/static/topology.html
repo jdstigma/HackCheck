@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>HackCheck -- Network Topology</title>
+<script src="https://unpkg.com/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
+<style>
+  body {
+    font-family: -apple-system, system-ui, sans-serif;
+    margin: 0;
+    background: #111318;
+    color: #e6e6e6;
+  }
+  #controls {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    padding: 12px 16px;
+    background: #1b1e26;
+    border-bottom: 1px solid #2c303a;
+    flex-wrap: wrap;
+  }
+  #controls input {
+    background: #262a34;
+    border: 1px solid #3a3f4b;
+    color: #e6e6e6;
+    padding: 6px 8px;
+    border-radius: 4px;
+  }
+  #controls input#baseUrl { width: 280px; }
+  #controls input#sinceMinutes { width: 70px; }
+  #controls button {
+    background: #3a6ea5;
+    border: none;
+    color: white;
+    padding: 7px 14px;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  #controls button:hover { background: #4a7fb5; }
+  #status { font-size: 13px; color: #9aa0ac; }
+  #network { width: 100%; height: calc(100vh - 56px); }
+  .legend {
+    position: absolute;
+    top: 68px;
+    right: 16px;
+    background: #1b1e26cc;
+    border: 1px solid #3a3f4b;
+    border-radius: 6px;
+    padding: 10px 14px;
+    font-size: 12px;
+    line-height: 1.8;
+  }
+  .dot {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    margin-right: 6px;
+  }
+</style>
+</head>
+<body>
+
+<div id="controls">
+  <label>Backend URL <input id="baseUrl" value="http://localhost:8000" /></label>
+  <label>Last <input id="sinceMinutes" type="number" value="60" min="1" /> min</label>
+  <button id="loadBtn">Load</button>
+  <span id="status"></span>
+</div>
+
+<div id="network"></div>
+<div class="legend">
+  <div><span class="dot" style="background:#4caf50;"></span>Known device (has a MAC on your LAN)</div>
+  <div><span class="dot" style="background:#5b8dd6;"></span>External endpoint</div>
+  <div style="margin-top:6px;">Edge thickness = traffic volume</div>
+</div>
+
+<script>
+const statusEl = document.getElementById('status');
+let network = null;
+
+function formatBytes(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  const kb = bytes / 1024;
+  if (kb < 1024) return kb.toFixed(1) + ' KB';
+  const mb = kb / 1024;
+  if (mb < 1024) return mb.toFixed(1) + ' MB';
+  return (mb / 1024).toFixed(2) + ' GB';
+}
+
+async function loadTopology() {
+  const baseUrl = document.getElementById('baseUrl').value.replace(/\/$/, '');
+  const sinceMinutes = document.getElementById('sinceMinutes').value || 60;
+
+  statusEl.textContent = 'Loading...';
+  try {
+    const res = await fetch(`${baseUrl}/topology?since_minutes=${sinceMinutes}`);
+    if (!res.ok) {
+      statusEl.textContent = `Backend returned ${res.status}`;
+      return;
+    }
+    const data = await res.json();
+    render(data);
+    statusEl.textContent = `${data.nodes.length} nodes, ${data.edges.length} edges (last ${data.since_minutes} min)`;
+  } catch (err) {
+    statusEl.textContent = `Could not reach backend at ${baseUrl}: ${err}`;
+  }
+}
+
+function render(data) {
+  const maxEdgeBytes = Math.max(1, ...data.edges.map(e => e.total_bytes));
+
+  const nodes = new vis.DataSet(data.nodes.map(n => ({
+    id: n.id,
+    label: n.label,
+    shape: 'dot',
+    size: n.is_known_device ? 16 : 10,
+    color: n.is_known_device ? '#4caf50' : '#5b8dd6',
+    font: { color: '#e6e6e6', size: 12 },
+  })));
+
+  const edges = new vis.DataSet(data.edges.map(e => ({
+    from: e.source,
+    to: e.target,
+    // Scale edge width by traffic volume, log-ish so one huge flow doesn't
+    // swamp the rest of the graph into invisible hairlines.
+    width: 1 + 6 * (Math.log(1 + e.total_bytes) / Math.log(1 + maxEdgeBytes)),
+    title: `${formatBytes(e.total_bytes)} across ${e.flow_count} flow(s)`,
+    color: { color: '#5a5f6b', opacity: 0.6 },
+    arrows: 'to',
+  })));
+
+  const container = document.getElementById('network');
+  const options = {
+    physics: {
+      solver: 'forceAtlas2Based',
+      forceAtlas2Based: { gravitationalConstant: -60, springLength: 120 },
+      stabilization: { iterations: 150 },
+    },
+    interaction: { hover: true, tooltipDelay: 100 },
+  };
+
+  if (network) network.destroy();
+  network = new vis.Network(container, { nodes, edges }, options);
+}
+
+document.getElementById('loadBtn').addEventListener('click', loadTopology);
+// Load once on page open with the default values.
+loadTopology();
+</script>
+
+</body>
+</html>
