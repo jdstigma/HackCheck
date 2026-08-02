@@ -77,8 +77,7 @@ fun HackCheckApp() {
     var cellTowers by remember { mutableStateOf<List<CellTowerInfo>>(emptyList()) }
     var cellTowerLocations by remember { mutableStateOf<Map<Long, CellTowerLocation?>>(emptyMap()) }
     var checkingCellTowers by remember { mutableStateOf(false) }
-    // TODO: move to local.properties / BuildConfig rather than hardcoding before committing a real key
-    val openCellIdApiKey = "YOUR_OPENCELLID_KEY"
+    val openCellIdApiKey = BuildConfig.OPENCELLID_API_KEY
 
     // Monitor state
     var monitoringRunning by remember { mutableStateOf(MonitorService.isRunning(context)) }
