@@ -19,11 +19,11 @@ from typing import Optional
 from fastapi import Depends, FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy import func
+from sqlalchemy import Integer, func
 from sqlalchemy.orm import Session
 
 from database import get_db
-from models import Device, NetworkFlow
+from models import Device, DnsQuery, NetworkFlow, SecurityAlert
 from ntopng_control import ntopng_status, start_ntopng, stop_ntopng
 
 app = FastAPI(title="HackCheck Router Backend")
@@ -253,3 +253,98 @@ def post_ntopng_start():
 def post_ntopng_stop():
     """Stops the local ntopng systemd service."""
     return stop_ntopng()
+
+
+@app.get("/dns-queries")
+def list_dns_queries(
+    since_minutes: int = Query(60, description="Return queries from the last N minutes"),
+    blocked_only: bool = Query(False, description="Only return blocked queries"),
+    limit: int = Query(200, le=5000),
+    db: Session = Depends(get_db),
+):
+    """Raw DNS query records from Pi-hole, most recent first."""
+    cutoff = datetime.now(timezone.utc) - timedelta(minutes=since_minutes)
+    query = db.query(DnsQuery).filter(DnsQuery.timestamp >= cutoff)
+    if blocked_only:
+        query = query.filter(DnsQuery.blocked.is_(True))
+
+    rows = query.order_by(DnsQuery.timestamp.desc()).limit(limit).all()
+    return [
+        {
+            "id": q.id,
+            "device_id": q.device_id,
+            "timestamp": q.timestamp,
+            "domain": q.domain,
+            "client_ip": q.client_ip,
+            "query_type": q.query_type,
+            "blocked": q.blocked,
+        }
+        for q in rows
+    ]
+
+
+@app.get("/dns-top-domains")
+def dns_top_domains(
+    since_minutes: int = Query(60, description="Look back this many minutes"),
+    limit: int = Query(20, le=200),
+    db: Session = Depends(get_db),
+):
+    """Most-queried domains in the window, with blocked-count alongside
+    total count -- the 'what is this network actually talking to, DNS-wise'
+    view."""
+    cutoff = datetime.now(timezone.utc) - timedelta(minutes=since_minutes)
+
+    rows = (
+        db.query(
+            DnsQuery.domain,
+            func.count(DnsQuery.id).label("query_count"),
+            func.sum(func.cast(DnsQuery.blocked, Integer)).label("blocked_count"),
+        )
+        .filter(DnsQuery.timestamp >= cutoff)
+        .group_by(DnsQuery.domain)
+        .order_by(func.count(DnsQuery.id).desc())
+        .limit(limit)
+        .all()
+    )
+
+    return [
+        {
+            "domain": r.domain,
+            "query_count": r.query_count,
+            "blocked_count": r.blocked_count or 0,
+        }
+        for r in rows
+    ]
+
+
+@app.get("/alerts")
+def list_alerts(
+    since_minutes: int = Query(1440, description="Return alerts from the last N minutes (default 24h)"),
+    limit: int = Query(200, le=5000),
+    db: Session = Depends(get_db),
+):
+    """Signature-based security alerts from Suricata, most recent and
+    most severe first. Suricata severity: 1 = high, 3 = low."""
+    cutoff = datetime.now(timezone.utc) - timedelta(minutes=since_minutes)
+
+    rows = (
+        db.query(SecurityAlert)
+        .filter(SecurityAlert.timestamp >= cutoff)
+        .order_by(SecurityAlert.severity.asc(), SecurityAlert.timestamp.desc())
+        .limit(limit)
+        .all()
+    )
+    return [
+        {
+            "id": a.id,
+            "device_id": a.device_id,
+            "timestamp": a.timestamp,
+            "signature": a.signature,
+            "severity": a.severity,
+            "category": a.category,
+            "src_ip": a.src_ip,
+            "dst_ip": a.dst_ip,
+            "protocol": a.protocol,
+        }
+        for a in rows
+    ]

@@ -1,8 +1,11 @@
 # HackCheck Router Backend
 
-A small Postgres + FastAPI backend that ingests network flow data from
-ntopng (running on a box connected to your switch's mirrored port) and
-serves it up for the HackCheck Android app's Router screen.
+A small Postgres + FastAPI backend that ingests data from ntopng
+(traffic flows), optionally Pi-hole (DNS queries), and optionally
+Suricata (signature-based intrusion alerts) -- all typically running on
+one dedicated box connected to your switch's mirrored port -- and serves
+it up for the HackCheck Android app's Router screen and the browser
+dashboard.
 
 ## Architecture
 
@@ -10,24 +13,31 @@ serves it up for the HackCheck Android app's Router screen.
 TP-Link switch (port mirroring)
         |
         v
-   ntopng  (runs on a Pi/PC plugged into the mirrored port,
-            captures + summarizes traffic, exposes a REST API)
-        |
-        v
-   poller.py  (polls ntopng every POLL_INTERVAL_SECONDS,
-               writes flows into Postgres)
-        |
-        v
-   Postgres  (devices + network_flows tables)
-        |
-        v
-   main.py (FastAPI)  (serves /devices, /flows, /top-talkers, /topology, etc.)
-        |
-        +----------------------------------+
-        v                                  v
-   HackCheck Android app           topology.html
-   (Router screen, over LAN)       (network graph, in a browser)
+   ntopng          Pi-hole (opt.)      Suricata (opt.)
+   (flow data)      (DNS queries)      (signature alerts, eve.json)
+        |                |                     |
+        v                v                     v
+   poller.py     pihole_poller.py     suricata_poller.py
+        |                |                     |
+        +----------------+---------------------+
+                          v
+                     Postgres
+       (devices, network_flows, dns_queries, security_alerts)
+                          |
+                          v
+          main.py (FastAPI) -- /devices, /flows, /top-talkers,
+          /topology, /dns-queries, /dns-top-domains, /alerts, etc.
+                          |
+        +-----------------------------------+
+        v                 v                  v
+   HackCheck app    dashboard.html    topology.html
+   (Router screen)  (tables, browser)  (graph, browser)
 ```
+
+Pi-hole and Suricata are both optional -- ntopng alone is enough for
+the Router screen and topology graph to work. Adding one or both gives
+domain-level visibility (Pi-hole) and signature-based alerting
+(Suricata) alongside the flow data ntopng already provides.
 
 Postgres and the API can also be queried directly from Power BI for
 dashboarding, independent of the Android app.
@@ -98,6 +108,21 @@ different machine than ntopng):
   documented at the top of `ntopng_control.py`. Without that sudoers
   setup, these return a clear error rather than failing silently --
   everything else in this backend works fine without it.
+- `GET /dns-queries?since_minutes=60&blocked_only=false&limit=200` --
+  raw DNS query records from Pi-hole
+- `GET /dns-top-domains?since_minutes=60&limit=20` -- most-queried
+  domains, with blocked-count alongside total count
+- `GET /alerts?since_minutes=1440&limit=200` -- signature-based alerts
+  from Suricata, most severe and most recent first
+
+## Optional standalone tools (Hydra, Wireshark)
+
+`setup-pi.sh` can also install Hydra (credential brute-force testing --
+your own devices/authorized use only) and Wireshark (packet analysis,
+configured for non-root capture). Neither integrates with the
+poller/Postgres/dashboard pipeline above -- they're standalone tools for
+manual home-lab use, installed for convenience since they're common
+network-diagnostics companions to everything else on this box.
 
 ## Dashboard and network topology visualization
 
@@ -132,6 +157,19 @@ yet for either page.
   v2 REST API, but exact field names and endpoint paths vary by ntopng
   version. The first real run will likely need small adjustments --
   see the docstring at the top of `poller.py`.
+- **Pi-hole API shape**: `pihole_poller.py` and `pihole_client.py` were
+  tested end-to-end against a mock Pi-hole server matching v6's
+  documented REST/session-auth API (real auth flow, real session
+  handling, real query parsing all verified), but never against an
+  actual live Pi-hole instance. Auth/session logic should be solid;
+  the query response field names are the part most likely to need a
+  small adjustment against a real instance -- see the docstring at the
+  top of `pihole_poller.py`.
+- **Suricata eve.json shape**: `suricata_poller.py`'s file-tailing and
+  parsing logic (including only-new-lines behavior and malformed-line
+  handling) was tested against real simulated eve.json files, but the
+  exact field availability depends on your Suricata config/version --
+  see the docstring at the top of `suricata_poller.py`.
 - **No auth on the FastAPI endpoints yet**: fine for a home LAN behind
   your router's firewall, but add an API key or similar before exposing
   this beyond your local network.

@@ -39,11 +39,30 @@
 #      installing, never edits /etc/sudoers directly
 #   6. Optionally walks through creating router-backend/.env
 #      interactively (Postgres connection details)
+#   7. Optionally installs Pi-hole via its own official installer (runs
+#      interactively -- its setup UI, not this script's, since Pi-hole's
+#      unattended-install config format isn't something this script
+#      assumes or tries to replicate)
+#   8. Optionally installs Suricata, points it at the same mirrored
+#      interface, and grants this user read access to its alert log
+#   9. Optionally sets up kiosk mode: boots this Pi straight into a
+#      fullscreen browser showing the HackCheck dashboard (uses labwc,
+#      the Wayland compositor Raspberry Pi OS Bookworm+ ships by default)
+#  10. Optionally installs Hydra -- a credential brute-forcer for testing
+#      YOUR OWN devices' password strength (home-lab/authorized use only,
+#      not integrated with anything else here -- it's a standalone CLI
+#      tool, not part of the poller/dashboard pipeline)
+#  11. Optionally installs Wireshark, configured for non-root packet
+#      capture (adds you to the 'wireshark' group -- also standalone,
+#      for manual packet analysis, not integrated with the pipeline)
 #
 # Still manual after this (needs decisions only you can make):
 #   - Actually setting up Postgres itself (local install or Docker)
 #   - Switch port mirroring (that's switch-side, not this box)
 #   - Running init_db.py and starting uvicorn
+#   - If Pi-hole/Suricata were installed: their own poller scripts
+#     (pihole_poller.py, suricata_poller.py) still need to be started
+#     separately, same as poller.py for ntopng
 
 set -euo pipefail
 
@@ -205,16 +224,172 @@ else
     echo ".env created from the template with placeholder values -- edit it before running init_db.py."
 fi
 
+# --- 7. Optional: Pi-hole -------------------------------------------------
+log "Install Pi-hole for DNS-level visibility?"
+if confirm "Install Pi-hole now (runs its own official interactive installer)?"; then
+    if command -v pihole >/dev/null 2>&1; then
+        echo "Pi-hole already installed, skipping."
+    else
+        echo "Launching Pi-hole's own installer -- follow its prompts (upstream DNS, interface, etc)."
+        curl -sSL https://install.pi-hole.net | bash
+        echo ""
+        echo "Pi-hole installed. Set an admin/API password if you haven't:"
+        echo "  sudo pihole -a -p"
+        echo "Then add that password to router-backend/.env as PIHOLE_PASSWORD"
+        echo "(or leave PIHOLE_PASSWORD blank in .env if you chose no password)."
+    fi
+else
+    echo "Skipping Pi-hole."
+fi
+
+# --- 8. Optional: Suricata -------------------------------------------------
+log "Install Suricata for signature-based intrusion detection?"
+if confirm "Install Suricata now?"; then
+    if command -v suricata >/dev/null 2>&1; then
+        echo "Suricata already installed, skipping apt install."
+    else
+        sudo apt update
+        sudo apt install -y suricata
+    fi
+
+    SURICATA_DEFAULTS="/etc/default/suricata"
+    if [ -f "$SURICATA_DEFAULTS" ]; then
+        if grep -q '^IFACE=' "$SURICATA_DEFAULTS" 2>/dev/null; then
+            sudo sed -i "s|^IFACE=.*|IFACE=${SELECTED_IFACE}|" "$SURICATA_DEFAULTS"
+        else
+            echo "IFACE=${SELECTED_IFACE}" | sudo tee -a "$SURICATA_DEFAULTS" > /dev/null
+        fi
+        echo "Suricata configured to monitor $SELECTED_IFACE (in $SURICATA_DEFAULTS)."
+    else
+        echo "$SURICATA_DEFAULTS not found -- this differs from the standard Debian/Raspberry"
+        echo "Pi OS suricata package layout. Configure the interface manually in"
+        echo "/etc/suricata/suricata.yaml under af-packet: interface: before starting it."
+    fi
+
+    sudo systemctl enable suricata
+    sudo systemctl restart suricata
+    echo "Suricata service status:"
+    sudo systemctl is-active suricata || echo "(not active yet -- check 'sudo systemctl status suricata' for details)"
+
+    # eve.json is typically owned by a dedicated group -- grant this user
+    # read access via that group rather than running the poller as root.
+    EVE_JSON_PATH="/var/log/suricata/eve.json"
+    if [ -e "$(dirname "$EVE_JSON_PATH")" ]; then
+        LOG_GROUP="$(stat -c '%G' "$(dirname "$EVE_JSON_PATH")" 2>/dev/null || echo "")"
+        if [ -n "$LOG_GROUP" ] && [ "$LOG_GROUP" != "root" ] && ! id -nG "$CURRENT_USER" | grep -qw "$LOG_GROUP"; then
+            sudo usermod -aG "$LOG_GROUP" "$CURRENT_USER"
+            echo "Added $CURRENT_USER to group '$LOG_GROUP' for eve.json read access."
+            echo "Log out and back in (or reboot) for this to take effect before running suricata_poller.py."
+        fi
+    fi
+else
+    echo "Skipping Suricata."
+fi
+
+# --- 9. Optional: kiosk mode ------------------------------------------------
+log "Set up kiosk mode (boot straight into the dashboard on this Pi's screen)?"
+if confirm "Set up kiosk mode now?"; then
+    CHROMIUM_PKG=""
+    if command -v chromium-browser >/dev/null 2>&1 || apt-cache show chromium-browser >/dev/null 2>&1; then
+        CHROMIUM_PKG="chromium-browser"
+    elif command -v chromium >/dev/null 2>&1 || apt-cache show chromium >/dev/null 2>&1; then
+        CHROMIUM_PKG="chromium"
+    fi
+
+    if [ -z "$CHROMIUM_PKG" ]; then
+        echo "Could not find a chromium package (checked chromium-browser and chromium)."
+        echo "Install one manually and re-run this step, or configure kiosk mode by hand."
+    else
+        if ! command -v "$CHROMIUM_PKG" >/dev/null 2>&1; then
+            sudo apt update
+            sudo apt install -y "$CHROMIUM_PKG"
+        fi
+
+        KIOSK_URL="$(prompt "URL to display in kiosk mode" "http://localhost:8000/static/dashboard.html" kiosk_url)"
+
+        LABWC_AUTOSTART="$HOME/.config/labwc/autostart"
+        mkdir -p "$(dirname "$LABWC_AUTOSTART")"
+        KIOSK_LINE="$CHROMIUM_PKG --kiosk --noerrdialogs --disable-infobars --no-first-run --enable-features=OverlayScrollbar --start-maximized \"$KIOSK_URL\" &"
+
+        if [ -f "$LABWC_AUTOSTART" ] && grep -qF -- "--kiosk" "$LABWC_AUTOSTART"; then
+            echo "$LABWC_AUTOSTART already has a kiosk entry -- leaving it as-is rather than adding a duplicate."
+            echo "Edit it by hand if you want to change the URL: $LABWC_AUTOSTART"
+        else
+            echo "$KIOSK_LINE" >> "$LABWC_AUTOSTART"
+            echo "Added kiosk autostart entry to $LABWC_AUTOSTART"
+        fi
+
+        echo ""
+        echo "This assumes Raspberry Pi OS's default desktop session (Wayland/labwc, the"
+        echo "default on Bookworm and later). If this Pi boots to a login prompt rather"
+        echo "than the desktop, enable desktop autologin: sudo raspi-config -> System"
+        echo "Options -> Boot / Auto Login -> Desktop Autologin."
+        echo ""
+        echo "The kiosk will show a connection error until uvicorn is actually running"
+        echo "and reachable at $KIOSK_URL -- that's expected until you finish the manual"
+        echo "steps below."
+    fi
+else
+    echo "Skipping kiosk mode."
+fi
+
+# --- 10. Optional: Hydra ----------------------------------------------------
+log "Install Hydra (credential brute-force testing tool)?"
+echo "For testing password strength on devices YOU own/administer -- unauthorized"
+echo "use against anything else is illegal. Standalone CLI tool, not part of the"
+echo "poller/dashboard pipeline built by everything else in this script."
+if confirm "Install Hydra now?"; then
+    if command -v hydra >/dev/null 2>&1; then
+        echo "Hydra already installed, skipping."
+    else
+        sudo apt update
+        sudo apt install -y hydra
+    fi
+    echo "Installed. Usage: hydra -h"
+else
+    echo "Skipping Hydra."
+fi
+
+# --- 11. Optional: Wireshark -------------------------------------------------
+log "Install Wireshark (packet analysis GUI + tshark CLI)?"
+if confirm "Install Wireshark now?"; then
+    if command -v wireshark >/dev/null 2>&1; then
+        echo "Wireshark already installed, skipping apt install."
+    else
+        # Pre-seed the non-root-capture debconf question so this doesn't
+        # hang waiting for an interactive dialog under curl|bash.
+        echo "wireshark-common wireshark-common/install-setuid boolean true" | sudo debconf-set-selections
+        sudo apt update
+        sudo DEBIAN_FRONTEND=noninteractive apt install -y wireshark
+    fi
+
+    if ! id -nG "$CURRENT_USER" | grep -qw "wireshark"; then
+        sudo usermod -aG wireshark "$CURRENT_USER"
+        echo "Added $CURRENT_USER to the 'wireshark' group for non-root packet capture."
+        echo "Log out and back in (or reboot) for this to take effect."
+    else
+        echo "$CURRENT_USER is already in the wireshark group."
+    fi
+    echo "GUI: wireshark  |  CLI: tshark -i <interface>"
+else
+    echo "Skipping Wireshark."
+fi
+
 # --- Summary --------------------------------------------------------------
 log "Done. Still manual, in order:"
 cat << 'EOF'
   1. Make sure Postgres itself is actually running (local install or Docker)
   2. cd HackCheck/router-backend (if not already there)
-  3. Review .env -- especially the ntopng credentials if you didn't set
-     those up interactively
+  3. Review .env -- especially the ntopng/Pi-hole credentials if you
+     didn't set those up interactively
   4. source .venv/bin/activate
   5. python init_db.py
   6. uvicorn main:app --reload --host 0.0.0.0 --port 8000
-  7. Point the HackCheck Android app's Router screen at this box's
-     LAN IP, e.g. http://<this-box-ip>:8000
+  7. If Pi-hole was installed: python pihole_poller.py (separate terminal)
+  8. If Suricata was installed: python suricata_poller.py (separate
+     terminal -- may need a fresh login first, see the group note above
+     if it was printed)
+  9. Point the HackCheck Android app's Router screen at this box's
+     LAN IP, e.g. http://<this-box-ip>:8000, or open
+     http://<this-box-ip>:8000/static/dashboard.html in any browser
 EOF

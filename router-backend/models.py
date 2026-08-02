@@ -10,12 +10,18 @@ Two tables:
   - NetworkFlow   one row per traffic flow observed and pulled from ntopng
                   (a "flow" is one conversation between two IPs/ports over
                   some time window -- not literally every packet)
+  - DnsQuery      one row per DNS lookup pulled from Pi-hole -- domain-level
+                  visibility that flow data alone doesn't give you
+  - SecurityAlert one row per signature-based alert pulled from Suricata's
+                  eve.json (known malicious traffic patterns, not just
+                  volume/flow data)
 """
 
 from datetime import datetime, timezone
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     Column,
     DateTime,
     ForeignKey,
@@ -84,3 +90,60 @@ class NetworkFlow(Base):
 
     def __repr__(self) -> str:
         return f"<NetworkFlow {self.src_ip} -> {self.dst_ip}:{self.dst_port} ({self.protocol})>"
+
+
+class DnsQuery(Base):
+    """One row per DNS query pulled from Pi-hole. Complements NetworkFlow --
+    flows tell you which IPs a device talked to, this tells you which
+    DOMAIN NAMES it looked up, which is often the more legible signal
+    ("device queried sketchy-domain.ru" reads a lot clearer than a bare
+    IP address).
+
+    device_id is nullable for the same reason as NetworkFlow.device_id --
+    Pi-hole reports a client IP, which may not yet be matched to a known
+    device/MAC.
+    """
+    __tablename__ = "dns_queries"
+
+    id = Column(Integer, primary_key=True)
+    device_id = Column(Integer, ForeignKey("devices.id"), nullable=True, index=True)
+
+    timestamp = Column(DateTime(timezone=True), default=utc_now, nullable=False, index=True)
+    domain = Column(String(255), nullable=False, index=True)
+    client_ip = Column(String(45), nullable=False)
+    query_type = Column(String(10), nullable=True)  # "A", "AAAA", "HTTPS", etc.
+    blocked = Column(Boolean, default=False, nullable=False)
+
+    device = relationship("Device")
+
+    def __repr__(self) -> str:
+        return f"<DnsQuery {self.client_ip} -> {self.domain} ({'blocked' if self.blocked else 'allowed'})>"
+
+
+class SecurityAlert(Base):
+    """One row per signature-based alert from Suricata's eve.json.
+
+    This is a fundamentally different signal than NetworkFlow/DnsQuery:
+    those show you volume and destinations, this shows you when traffic
+    actually MATCHED a known-malicious pattern (a specific malware
+    family's C2 check-in shape, a port-scan signature, etc.) -- it's the
+    closest thing in this stack to "someone/something is actually doing
+    something bad," rather than "here's what's happening, you judge it."
+    """
+    __tablename__ = "security_alerts"
+
+    id = Column(Integer, primary_key=True)
+    device_id = Column(Integer, ForeignKey("devices.id"), nullable=True, index=True)
+
+    timestamp = Column(DateTime(timezone=True), default=utc_now, nullable=False, index=True)
+    signature = Column(String(500), nullable=False)
+    severity = Column(Integer, nullable=True)  # Suricata: 1 (high) - 3 (low)
+    category = Column(String(255), nullable=True)
+    src_ip = Column(String(45), nullable=True)
+    dst_ip = Column(String(45), nullable=True)
+    protocol = Column(String(10), nullable=True)
+
+    device = relationship("Device")
+
+    def __repr__(self) -> str:
+        return f"<SecurityAlert {self.signature} ({self.src_ip} -> {self.dst_ip})>"
