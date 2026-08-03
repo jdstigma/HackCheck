@@ -29,7 +29,10 @@
 #   HACKCHECK_SETUP_ENV=yes|no
 #
 # What this does:
-#   1. Installs ntopng via apt, enables + starts it as a systemd service
+#   1. Installs ntopng via Docker (ntop's officially documented path for
+#      Raspberry Pi/ARM64 -- their native apt packages have been broken
+#      or missing for ARM for years), wrapped in a systemd service so
+#      the app's Start/Stop controls still work via plain systemctl
 #   2. Asks which network interface is connected to the mirrored port,
 #      and configures ntopng to listen on it
 #   3. Clones the HackCheck repo (skips if already present)
@@ -75,7 +78,6 @@ set -euo pipefail
 REPO_URL="https://github.com/jdstigma/HackCheck.git"
 REPO_DIR="HackCheck"
 SUDOERS_FILE="/etc/sudoers.d/hackcheck-ntopng"
-NTOPNG_CONF="/etc/ntopng/ntopng.conf"
 
 log() { echo -e "\n==> $1"; }
 
@@ -114,16 +116,18 @@ if ! confirm "Continue?"; then
     exit 0
 fi
 
-# --- 1. ntopng ---------------------------------------------------------
-log "Checking ntopng..."
-if command -v ntopng >/dev/null 2>&1; then
-    echo "ntopng already installed, skipping apt install."
-else
-    sudo apt update
-    sudo apt install -y ntopng
-fi
-
-# --- 2. Network interface --------------------------------------------
+# --- 1 & 2. ntopng (via Docker) + network interface -------------------
+# ntopng's native apt packages for Raspberry Pi OS/ARM have been broken
+# or missing for years (multiple long-open issues on ntop's own GitHub --
+# "Package 'ntopng' has no installation candidate" is a known, common,
+# unresolved problem, not something specific to your setup). ntop.org's
+# own officially documented fix for Raspberry Pi is their ARM64 Docker
+# image instead: https://hub.docker.com/r/ntop/ntopng_arm64.dev
+#
+# Wrapped in a systemd service below so `systemctl start/stop/is-active
+# ntopng` keeps working exactly as ntopng_control.py (and the Android
+# app's Start/Stop box buttons) already expect -- nothing about that
+# control surface changes, only how ntopng itself actually runs.
 log "Which network interface is connected to your switch's mirrored port?"
 echo "Available interfaces on this machine:"
 DEFAULT_IFACE=""
@@ -138,18 +142,57 @@ done
 SELECTED_IFACE="${HACKCHECK_INTERFACE:-$(prompt "Interface for ntopng to monitor" "$DEFAULT_IFACE" iface)}"
 echo "Using interface: $SELECTED_IFACE"
 
-sudo mkdir -p "$(dirname "$NTOPNG_CONF")"
-if [ -f "$NTOPNG_CONF" ] && grep -q '^-i=' "$NTOPNG_CONF" 2>/dev/null; then
-    sudo sed -i "s|^-i=.*|-i=${SELECTED_IFACE}|" "$NTOPNG_CONF"
+log "Setting up ntopng via Docker..."
+ARCH="$(uname -m)"
+if [ "$ARCH" != "aarch64" ] && [ "$ARCH" != "arm64" ]; then
+    echo "Detected architecture: $ARCH -- ntop's officially supported Docker image"
+    echo "targets 64-bit ARM (aarch64/arm64), i.e. the 64-bit Raspberry Pi OS image."
+    echo "32-bit community ntopng images exist but are old and reported unstable."
+    echo "Skipping automatic ntopng install -- if you're on 32-bit Raspberry Pi OS,"
+    echo "consider reflashing with the 64-bit image, or install ntopng manually."
 else
-    echo "-i=${SELECTED_IFACE}" | sudo tee -a "$NTOPNG_CONF" > /dev/null
-fi
-echo "ntopng configured to monitor $SELECTED_IFACE (in $NTOPNG_CONF)."
+    if ! command -v docker >/dev/null 2>&1; then
+        if confirm "Docker isn't installed. Install it now (official get.docker.com script)?"; then
+            curl -fsSL https://get.docker.com | sh
+            sudo usermod -aG docker "$(whoami)"
+            echo "Added $(whoami) to the docker group -- may need a fresh login to take effect"
+            echo "for running docker commands directly yourself; the systemd service below"
+            echo "runs docker as root via sudo, so it works regardless."
+        fi
+    fi
 
-sudo systemctl enable ntopng
-sudo systemctl restart ntopng
-echo "ntopng service status:"
-sudo systemctl is-active ntopng || echo "(not active yet -- check 'sudo systemctl status ntopng' for details)"
+    if command -v docker >/dev/null 2>&1; then
+        NTOPNG_IMAGE="ntop/ntopng_arm64.dev:latest"
+        docker pull "$NTOPNG_IMAGE"
+
+        sudo tee /etc/systemd/system/ntopng.service > /dev/null << SERVICE_EOF
+[Unit]
+Description=ntopng (via Docker)
+After=docker.service network-online.target
+Requires=docker.service
+Wants=network-online.target
+
+[Service]
+Restart=on-failure
+ExecStartPre=-/usr/bin/docker rm -f ntopng
+ExecStart=/usr/bin/docker run --rm --name ntopng --net=host ${NTOPNG_IMAGE} -i ${SELECTED_IFACE}
+ExecStop=/usr/bin/docker stop ntopng
+
+[Install]
+WantedBy=multi-user.target
+SERVICE_EOF
+
+        sudo systemctl daemon-reload
+        sudo systemctl enable ntopng
+        sudo systemctl restart ntopng
+        echo "ntopng service status:"
+        sudo systemctl is-active ntopng || echo "(not active yet -- check 'sudo systemctl status ntopng' and 'sudo docker logs ntopng' for details)"
+        echo ""
+        echo "ntopng web UI (once running): http://<this-box-ip>:3000 (default login admin/admin)"
+    else
+        echo "Docker not available -- skipping ntopng setup. Install Docker and re-run this step."
+    fi
+fi
 
 # --- 3. Clone the repo ---------------------------------------------------
 log "Checking HackCheck repo..."
