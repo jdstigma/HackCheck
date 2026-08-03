@@ -38,7 +38,10 @@
 #      check ntopng via the app -- validated with visudo -c before
 #      installing, never edits /etc/sudoers directly
 #   6. Optionally walks through creating router-backend/.env
-#      interactively (Postgres connection details)
+#      interactively (Postgres connection details) -- and if Postgres is
+#      meant to run on this same box, offers to install it and create
+#      the role/database too, not just build a connection string for
+#      something that doesn't exist yet
 #   7. Optionally installs Pi-hole via its own official installer (runs
 #      interactively -- its setup UI, not this script's, since Pi-hole's
 #      unattended-install config format isn't something this script
@@ -57,12 +60,15 @@
 #      for manual packet analysis, not integrated with the pipeline)
 #
 # Still manual after this (needs decisions only you can make):
-#   - Actually setting up Postgres itself (local install or Docker)
 #   - Switch port mirroring (that's switch-side, not this box)
 #   - Running init_db.py and starting uvicorn
 #   - If Pi-hole/Suricata were installed: their own poller scripts
 #     (pihole_poller.py, suricata_poller.py) still need to be started
 #     separately, same as poller.py for ntopng
+#   - Postgres install/setup is now automated ABOVE if you point it at
+#     localhost and say yes when asked -- still manual if you're running
+#     Postgres on a different machine (point DB_HOST there instead and
+#     set it up yourself, same as always for a remote database)
 
 set -euo pipefail
 
@@ -215,9 +221,55 @@ elif [ "$SETUP_ENV" = "yes" ]; then
         echo "No TTY available -- leaving password as a placeholder; edit .env manually." >&2
     fi
 
+    # If Postgres is meant to run on this same box, offer to actually
+    # install it and create the role/database -- collecting connection
+    # details above only builds a connection STRING, it doesn't make
+    # anything on the Postgres side actually exist yet.
+    if [ "$DB_HOST" = "localhost" ] || [ "$DB_HOST" = "127.0.0.1" ]; then
+        if ! command -v psql >/dev/null 2>&1; then
+            if confirm "Postgres isn't installed on this box yet. Install it now?"; then
+                sudo apt update
+                sudo apt install -y postgresql
+            fi
+        fi
+
+        if command -v psql >/dev/null 2>&1; then
+            if confirm "Create the '$DB_USER' role and '$DB_NAME' database now?"; then
+                # Single-quote-escape for the SQL literal (doubling embedded
+                # single quotes) -- separate from the URL-encoding done
+                # below, which is for the connection string, not raw SQL.
+                DB_PASSWORD_SQL_ESCAPED="$(printf '%s' "$DB_PASSWORD" | sed "s/'/''/g")"
+
+                sudo -u postgres psql -v ON_ERROR_STOP=1 > /dev/null << SQL_EOF
+DO \$\$
+BEGIN
+   IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = '${DB_USER}') THEN
+      CREATE ROLE ${DB_USER} LOGIN PASSWORD '${DB_PASSWORD_SQL_ESCAPED}';
+   END IF;
+END
+\$\$;
+SQL_EOF
+                DB_EXISTS="$(sudo -u postgres psql -tAc "SELECT 1 FROM pg_database WHERE datname='${DB_NAME}'")"
+                if [ "$DB_EXISTS" != "1" ]; then
+                    sudo -u postgres psql -v ON_ERROR_STOP=1 -c "CREATE DATABASE ${DB_NAME} OWNER ${DB_USER};" > /dev/null
+                    echo "Created database '$DB_NAME' owned by '$DB_USER'."
+                else
+                    echo "Database '$DB_NAME' already exists, leaving it as-is."
+                fi
+            fi
+        fi
+    fi
+
     cp .env.example .env
-    ESCAPED_PASSWORD="$(printf '%s' "$DB_PASSWORD" | sed 's/[&/\]/\\&/g')"
-    sed -i "s|^DATABASE_URL=.*|DATABASE_URL=postgresql://${DB_USER}:${ESCAPED_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}|" .env
+    # URL-encode both username and password before building the connection
+    # string -- a raw password containing @, :, /, or similar breaks
+    # DATABASE_URL parsing (SQLAlchemy misreads the host/port/etc). Encoding
+    # with safe='' also makes the result safe to drop straight into sed's
+    # replacement string with no separate sed-escaping needed, since
+    # everything sed treats specially (&, /, \) gets percent-encoded too.
+    DB_USER_ENCODED="$(python3 -c "import urllib.parse, sys; print(urllib.parse.quote(sys.argv[1], safe=''))" "$DB_USER")"
+    DB_PASSWORD_ENCODED="$(python3 -c "import urllib.parse, sys; print(urllib.parse.quote(sys.argv[1], safe=''))" "$DB_PASSWORD")"
+    sed -i "s|^DATABASE_URL=.*|DATABASE_URL=postgresql://${DB_USER_ENCODED}:${DB_PASSWORD_ENCODED}@${DB_HOST}:${DB_PORT}/${DB_NAME}|" .env
     echo ".env created with your Postgres details. ntopng credentials in it are still placeholders -- edit those once you know them."
 else
     cp .env.example .env
@@ -378,7 +430,8 @@ fi
 # --- Summary --------------------------------------------------------------
 log "Done. Still manual, in order:"
 cat << 'EOF'
-  1. Make sure Postgres itself is actually running (local install or Docker)
+  1. If you didn't set up Postgres above (e.g. running it on a
+     different machine), make sure it's actually running and reachable
   2. cd HackCheck/router-backend (if not already there)
   3. Review .env -- especially the ntopng/Pi-hole credentials if you
      didn't set those up interactively

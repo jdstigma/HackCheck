@@ -51,10 +51,14 @@ curl -fsSL https://raw.githubusercontent.com/jdstigma/HackCheck/main/router-back
 Installs ntopng, asks which network interface is on your switch's
 mirrored port, clones this repo, sets up the Python environment, writes
 the sudoers entry needed for the app's Start/Stop box controls, and
-optionally walks through `.env`/Postgres details interactively. Nothing
-about your specific machine or username is hardcoded -- it prompts for
-what it needs (or falls back to sane defaults if run somewhere without a
-real terminal attached, e.g. `HACKCHECK_INTERFACE=eth0
+optionally walks through `.env`/Postgres details interactively --
+including installing Postgres itself and creating the role/database if
+you point it at `localhost` and confirm, not just writing a connection
+string for something that doesn't exist yet. Also offers Pi-hole,
+Suricata, kiosk mode, Hydra, and Wireshark, each independently optional.
+Nothing about your specific machine or username is hardcoded -- it
+prompts for what it needs (or falls back to sane defaults if run
+somewhere without a real terminal attached, e.g. `HACKCHECK_INTERFACE=eth0
 HACKCHECK_SETUP_ENV=no bash setup-pi.sh` for a fully non-interactive
 run). Worth reading before piping anything into bash, including this.
 
