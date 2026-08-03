@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 pihole_poller.py -- pulls recent DNS queries from Pi-hole and writes them
 into Postgres on a loop.

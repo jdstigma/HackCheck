@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 suricata_poller.py -- tails Suricata's eve.json log for "alert" events
 and writes them into Postgres.

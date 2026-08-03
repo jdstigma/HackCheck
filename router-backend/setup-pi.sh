@@ -61,6 +61,10 @@
 #  11. Optionally installs Wireshark, configured for non-root packet
 #      capture (adds you to the 'wireshark' group -- also standalone,
 #      for manual packet analysis, not integrated with the pipeline)
+#  12. Optionally sets up systemd services for the backend and all
+#      installed pollers, so they run continuously and survive reboots/
+#      SSH disconnects rather than needing a terminal kept open forever
+#      -- recommended for a box that lives permanently on your network
 #
 # Still manual after this (needs decisions only you can make):
 #   - Switch port mirroring (that's switch-side, not this box)
@@ -482,6 +486,83 @@ else
     echo "Skipping Wireshark."
 fi
 
+# --- 12. Optional: systemd services for backend + pollers ------------------
+log "Set up systemd services so the backend and pollers run continuously,"
+echo "independent of any terminal or SSH session (recommended for a box that"
+echo "sits on your network permanently, rather than one you keep terminals"
+echo "open for)."
+if confirm "Set up systemd services now?"; then
+    BACKEND_DIR="$(pwd)"
+    VENV_PYTHON="${BACKEND_DIR}/.venv/bin/python"
+    VENV_UVICORN="${BACKEND_DIR}/.venv/bin/uvicorn"
+
+    write_service() {
+        local name="$1" description="$2" exec_start="$3" extra_after="$4"
+        local service_file="/etc/systemd/system/${name}.service"
+        if [ -f "$service_file" ]; then
+            echo "$service_file already exists, leaving it as-is."
+            return
+        fi
+        sudo tee "$service_file" > /dev/null << SERVICE_EOF
+[Unit]
+Description=${description}
+After=network-online.target postgresql.service${extra_after}
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=${TARGET_USER}
+WorkingDirectory=${BACKEND_DIR}
+ExecStart=${exec_start}
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+SERVICE_EOF
+        echo "Created $service_file"
+    }
+
+    write_service "hackcheck-backend" "HackCheck router-backend (FastAPI)" \
+        "${VENV_UVICORN} main:app --host 0.0.0.0 --port 8000" ""
+    write_service "hackcheck-ntopng-poller" "HackCheck ntopng poller" \
+        "${VENV_PYTHON} poller.py" " ntopng.service"
+
+    # Only create pollers for what's actually installed -- checking the real
+    # commands rather than assuming based on earlier prompts, since this step
+    # might also run standalone against an already-configured box.
+    if command -v pihole >/dev/null 2>&1; then
+        write_service "hackcheck-pihole-poller" "HackCheck Pi-hole poller" \
+            "${VENV_PYTHON} pihole_poller.py" ""
+    fi
+    if command -v suricata >/dev/null 2>&1; then
+        write_service "hackcheck-suricata-poller" "HackCheck Suricata poller" \
+            "${VENV_PYTHON} suricata_poller.py" " suricata.service"
+    fi
+
+    sudo systemctl daemon-reload
+
+    SERVICES_TO_START="hackcheck-backend hackcheck-ntopng-poller"
+    [ -f /etc/systemd/system/hackcheck-pihole-poller.service ] && SERVICES_TO_START="$SERVICES_TO_START hackcheck-pihole-poller"
+    [ -f /etc/systemd/system/hackcheck-suricata-poller.service ] && SERVICES_TO_START="$SERVICES_TO_START hackcheck-suricata-poller"
+
+    echo "Enabling and starting: $SERVICES_TO_START"
+    # shellcheck disable=SC2086
+    sudo systemctl enable $SERVICES_TO_START
+    # shellcheck disable=SC2086
+    sudo systemctl start $SERVICES_TO_START
+
+    echo ""
+    echo "Status (a service showing 'activating' rather than 'active' may "
+    echo "still be waiting on Postgres/init_db.py -- see the manual steps "
+    echo "below if so):"
+    # shellcheck disable=SC2086
+    sudo systemctl status $SERVICES_TO_START --no-pager || true
+else
+    echo "Skipping systemd setup -- you'll need to run uvicorn/pollers manually"
+    echo "each time, in their own terminals, and they'll stop if that session ends."
+fi
+
 # --- Summary --------------------------------------------------------------
 log "Done. Still manual, in order:"
 cat << 'EOF'
@@ -491,13 +572,22 @@ cat << 'EOF'
   3. Review .env -- especially the ntopng/Pi-hole credentials if you
      didn't set those up interactively
   4. source .venv/bin/activate
-  5. python init_db.py
-  6. uvicorn main:app --reload --host 0.0.0.0 --port 8000
-  7. If Pi-hole was installed: python pihole_poller.py (separate terminal)
-  8. If Suricata was installed: python suricata_poller.py (separate
-     terminal -- may need a fresh login first, see the group note above
-     if it was printed)
-  9. Point the HackCheck Android app's Router screen at this box's
+  5. python init_db.py -- required either way; if you set up the
+     systemd services above, they'll keep retrying every 5s until this
+     has run and Postgres has real tables, then self-heal automatically
+  6. If you did NOT set up systemd services above: run these manually,
+     each in its own terminal, and they'll stop when that terminal/SSH
+     session ends --
+       uvicorn main:app --host 0.0.0.0 --port 8000
+       python pihole_poller.py   (if Pi-hole was installed)
+       python suricata_poller.py (if Suricata was installed, may need
+                                   a fresh login first for eve.json
+                                   read access, see the group note
+                                   above if it was printed)
+     If you DID set up systemd services, these are already running
+     continuously -- check with:
+       sudo systemctl status hackcheck-backend hackcheck-ntopng-poller
+  7. Point the HackCheck Android app's Router screen at this box's
      LAN IP, e.g. http://<this-box-ip>:8000, or open
      http://<this-box-ip>:8000/static/dashboard.html in any browser
 EOF

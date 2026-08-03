@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 poller.py -- pulls active flows from ntopng's REST API and writes them
 into Postgres on a loop.

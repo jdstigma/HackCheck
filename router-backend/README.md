@@ -119,6 +119,19 @@ different machine than ntopng):
 - `GET /alerts?since_minutes=1440&limit=200` -- signature-based alerts
   from Suricata, most severe and most recent first
 
+## Running continuously (systemd services)
+
+`setup-pi.sh` can also set up systemd services for the backend and every
+poller you've installed (`hackcheck-backend`, `hackcheck-ntopng-poller`,
+and `hackcheck-pihole-poller`/`hackcheck-suricata-poller` if those were
+installed) -- recommended for a box that lives permanently on your
+network, since otherwise everything only runs as long as a terminal or
+SSH session stays open. Services auto-restart on failure and survive
+reboots. Check status with:
+```
+sudo systemctl status hackcheck-backend hackcheck-ntopng-poller
+```
+
 ## Optional standalone tools (Hydra, Wireshark)
 
 `setup-pi.sh` can also install Hydra (credential brute-force testing --

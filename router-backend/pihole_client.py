@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 pihole_client.py -- Pi-hole v6 REST API client (session-based auth).
 
