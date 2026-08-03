@@ -116,6 +116,13 @@ if ! confirm "Continue?"; then
     exit 0
 fi
 
+# Asked explicitly rather than assumed from whoami -- if this script were
+# ever run via sudo, whoami would wrongly return root instead of the real
+# account that should get Docker/sudoers/group access. Defaults to
+# whoami's answer (usually correct), but you can override it.
+TARGET_USER="$(prompt "Which username should get Docker/sudoers/group access" "$(whoami)" target_user)"
+echo "Setting up for user: $TARGET_USER"
+
 # --- 1 & 2. ntopng (via Docker) + network interface -------------------
 # ntopng's native apt packages for Raspberry Pi OS/ARM have been broken
 # or missing for years (multiple long-open issues on ntop's own GitHub --
@@ -154,16 +161,22 @@ else
     if ! command -v docker >/dev/null 2>&1; then
         if confirm "Docker isn't installed. Install it now (official get.docker.com script)?"; then
             curl -fsSL https://get.docker.com | sh
-            sudo usermod -aG docker "$(whoami)"
-            echo "Added $(whoami) to the docker group -- may need a fresh login to take effect"
-            echo "for running docker commands directly yourself; the systemd service below"
-            echo "runs docker as root via sudo, so it works regardless."
+            sudo usermod -aG docker "$TARGET_USER"
+            echo "Added $TARGET_USER to the docker group -- needs a fresh login (or reboot)"
+            echo "before $TARGET_USER can run plain 'docker' commands without sudo. This"
+            echo "script uses sudo for its own docker commands below, so it isn't affected"
+            echo "by that same limitation."
         fi
     fi
 
     if command -v docker >/dev/null 2>&1; then
         NTOPNG_IMAGE="ntop/ntopng_arm64.dev:latest"
-        docker pull "$NTOPNG_IMAGE"
+        # sudo here, not plain docker -- $TARGET_USER was just added to the
+        # docker group above, but that membership doesn't apply until a
+        # fresh login/new shell. Using sudo means this works immediately
+        # in the same script run, regardless of whether $TARGET_USER is
+        # the account actually running this script right now.
+        sudo docker pull "$NTOPNG_IMAGE"
 
         sudo tee /etc/systemd/system/ntopng.service > /dev/null << SERVICE_EOF
 [Unit]
@@ -217,20 +230,19 @@ deactivate
 # --- 5. Scoped sudoers for the start/stop/status control endpoints ------
 log "Setting up sudoers for ntopng control..."
 SYSTEMCTL_PATH="$(command -v systemctl || true)"
-CURRENT_USER="$(whoami)"
 
 if [ -z "$SYSTEMCTL_PATH" ]; then
     echo "Could not find systemctl on PATH -- skipping sudoers setup."
     echo "The app's Start/Stop box buttons won't work until this is set up manually."
 else
-    SUDOERS_LINE="${CURRENT_USER} ALL=(ALL) NOPASSWD: ${SYSTEMCTL_PATH} start ntopng, ${SYSTEMCTL_PATH} stop ntopng, ${SYSTEMCTL_PATH} is-active ntopng"
+    SUDOERS_LINE="${TARGET_USER} ALL=(ALL) NOPASSWD: ${SYSTEMCTL_PATH} start ntopng, ${SYSTEMCTL_PATH} stop ntopng, ${SYSTEMCTL_PATH} is-active ntopng"
 
     TMP_SUDOERS="$(mktemp)"
     echo "$SUDOERS_LINE" > "$TMP_SUDOERS"
 
     if sudo visudo -c -f "$TMP_SUDOERS" >/dev/null 2>&1; then
         sudo install -m 0440 "$TMP_SUDOERS" "$SUDOERS_FILE"
-        echo "Sudoers entry installed at $SUDOERS_FILE for user $CURRENT_USER."
+        echo "Sudoers entry installed at $SUDOERS_FILE for user $TARGET_USER."
     else
         echo "Generated sudoers line failed validation -- NOT installed, to avoid breaking sudo."
         echo "Line that failed: $SUDOERS_LINE"
@@ -371,9 +383,9 @@ if confirm "Install Suricata now?"; then
     EVE_JSON_PATH="/var/log/suricata/eve.json"
     if [ -e "$(dirname "$EVE_JSON_PATH")" ]; then
         LOG_GROUP="$(stat -c '%G' "$(dirname "$EVE_JSON_PATH")" 2>/dev/null || echo "")"
-        if [ -n "$LOG_GROUP" ] && [ "$LOG_GROUP" != "root" ] && ! id -nG "$CURRENT_USER" | grep -qw "$LOG_GROUP"; then
-            sudo usermod -aG "$LOG_GROUP" "$CURRENT_USER"
-            echo "Added $CURRENT_USER to group '$LOG_GROUP' for eve.json read access."
+        if [ -n "$LOG_GROUP" ] && [ "$LOG_GROUP" != "root" ] && ! id -nG "$TARGET_USER" | grep -qw "$LOG_GROUP"; then
+            sudo usermod -aG "$LOG_GROUP" "$TARGET_USER"
+            echo "Added $TARGET_USER to group '$LOG_GROUP' for eve.json read access."
             echo "Log out and back in (or reboot) for this to take effect before running suricata_poller.py."
         fi
     fi
@@ -458,12 +470,12 @@ if confirm "Install Wireshark now?"; then
         sudo DEBIAN_FRONTEND=noninteractive apt install -y wireshark
     fi
 
-    if ! id -nG "$CURRENT_USER" | grep -qw "wireshark"; then
-        sudo usermod -aG wireshark "$CURRENT_USER"
-        echo "Added $CURRENT_USER to the 'wireshark' group for non-root packet capture."
+    if ! id -nG "$TARGET_USER" | grep -qw "wireshark"; then
+        sudo usermod -aG wireshark "$TARGET_USER"
+        echo "Added $TARGET_USER to the 'wireshark' group for non-root packet capture."
         echo "Log out and back in (or reboot) for this to take effect."
     else
-        echo "$CURRENT_USER is already in the wireshark group."
+        echo "$TARGET_USER is already in the wireshark group."
     fi
     echo "GUI: wireshark  |  CLI: tshark -i <interface>"
 else
