@@ -1,0 +1,15 @@
+[Unit]
+Description=HackCheck ntopng poller
+After=network-online.target postgresql.service ntopng.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=jdstigs
+WorkingDirectory=/home/jdstigs/HackCheck/router-backend
+ExecStart=/home/jdstigs/HackCheck/router-backend/.venv/bin/python poller.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

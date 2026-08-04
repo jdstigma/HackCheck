@@ -1,0 +1,15 @@
+[Unit]
+Description=HackCheck router-backend (FastAPI)
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=jdstigs
+WorkingDirectory=/home/jdstigs/HackCheck/router-backend
+ExecStart=/home/jdstigs/HackCheck/router-backend/.venv/bin/uvicorn main:app --host 0.0.0.0 --port 8000
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
