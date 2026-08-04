@@ -52,9 +52,10 @@ Installs ntopng, asks which network interface is on your switch's
 mirrored port, clones this repo, sets up the Python environment, writes
 the sudoers entry needed for the app's Start/Stop box controls, and
 optionally walks through `.env`/Postgres details interactively --
-including installing Postgres itself and creating the role/database if
-you point it at `localhost` and confirm, not just writing a connection
-string for something that doesn't exist yet. Also offers Pi-hole,
+including installing Postgres itself, creating the role/database if
+you point it at `localhost` and confirm, and then running `init_db.py`
+automatically once the connection details are in place, rather than
+leaving table creation as a separate manual step. Also offers Pi-hole,
 Suricata, kiosk mode, Hydra, and Wireshark, each independently optional.
 Nothing about your specific machine or username is hardcoded -- it
 prompts for what it needs (or falls back to sane defaults if run

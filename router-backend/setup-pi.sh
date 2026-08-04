@@ -44,7 +44,10 @@
 #      interactively (Postgres connection details) -- and if Postgres is
 #      meant to run on this same box, offers to install it and create
 #      the role/database too, not just build a connection string for
-#      something that doesn't exist yet
+#      something that doesn't exist yet. Then runs init_db.py
+#      automatically -- failure here (e.g. DATABASE_URL still a
+#      placeholder) is reported but doesn't stop the rest of setup;
+#      the systemd services set up later self-heal once it's fixed
 #   7. Optionally installs Pi-hole via its own official installer (runs
 #      interactively -- its setup UI, not this script's, since Pi-hole's
 #      unattended-install config format isn't something this script
@@ -335,6 +338,26 @@ else
     echo ".env created from the template with placeholder values -- edit it before running init_db.py."
 fi
 
+log "Creating database tables (init_db.py)..."
+if [ -x ".venv/bin/python" ]; then
+    # Guarded with if/then rather than run bare -- this script runs under
+    # set -e, and a bare failing command here would kill the rest of setup
+    # (Pi-hole/Suricata/kiosk/systemd steps below) over something as
+    # recoverable as DATABASE_URL still being a placeholder. Report and
+    # continue instead.
+    if .venv/bin/python init_db.py; then
+        echo "Tables created successfully."
+    else
+        echo "init_db.py failed -- almost certainly DATABASE_URL in .env isn't valid/reachable yet"
+        echo "(placeholder values, or Postgres isn't actually running). Fix .env, then run:"
+        echo "  cd $(pwd) && source .venv/bin/activate && python init_db.py"
+        echo "The systemd services set up later in this script will keep retrying every 5s"
+        echo "and self-heal automatically once this succeeds -- no need to restart them by hand."
+    fi
+else
+    echo "No .venv found at .venv/bin/python -- skipping automatic table creation."
+fi
+
 # --- 7. Optional: Pi-hole -------------------------------------------------
 log "Install Pi-hole for DNS-level visibility?"
 if confirm "Install Pi-hole now (runs its own official interactive installer)?"; then
@@ -566,18 +589,19 @@ fi
 # --- Summary --------------------------------------------------------------
 log "Done. Still manual, in order:"
 cat << 'EOF'
-  1. If you didn't set up Postgres above (e.g. running it on a
+  1. init_db.py already ran automatically above. If it reported failure
+     (DATABASE_URL wasn't valid/reachable yet at the time), fix .env and
+     run it manually -- see the message it printed for the exact command.
+     If you set up systemd services below, they'll keep retrying every 5s
+     and self-heal automatically once this succeeds, no restart needed.
+  2. If you didn't set up Postgres above (e.g. running it on a
      different machine), make sure it's actually running and reachable
-  2. cd HackCheck/router-backend (if not already there)
   3. Review .env -- especially the ntopng/Pi-hole credentials if you
      didn't set those up interactively
-  4. source .venv/bin/activate
-  5. python init_db.py -- required either way; if you set up the
-     systemd services above, they'll keep retrying every 5s until this
-     has run and Postgres has real tables, then self-heal automatically
-  6. If you did NOT set up systemd services above: run these manually,
+  4. If you did NOT set up systemd services above: run these manually,
      each in its own terminal, and they'll stop when that terminal/SSH
      session ends --
+       source .venv/bin/activate
        uvicorn main:app --host 0.0.0.0 --port 8000
        python pihole_poller.py   (if Pi-hole was installed)
        python suricata_poller.py (if Suricata was installed, may need
@@ -587,7 +611,7 @@ cat << 'EOF'
      If you DID set up systemd services, these are already running
      continuously -- check with:
        sudo systemctl status hackcheck-backend hackcheck-ntopng-poller
-  7. Point the HackCheck Android app's Router screen at this box's
+  5. Point the HackCheck Android app's Router screen at this box's
      LAN IP, e.g. http://<this-box-ip>:8000, or open
      http://<this-box-ip>:8000/static/dashboard.html in any browser
 EOF
