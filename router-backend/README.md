@@ -118,6 +118,13 @@ different machine than ntopng):
   domains, with blocked-count alongside total count
 - `GET /alerts?since_minutes=1440&limit=200` -- signature-based alerts
   from Suricata, most severe and most recent first
+- `GET /export/flows`, `/export/alerts`, `/export/dns-queries`
+  (`?since_minutes=&limit=`) -- CSV downloads of the same data, for
+  pulling a copy onto a PC on request. No separate file-transfer
+  protocol needed -- these are plain downloads over the same connection
+  as everything else, triggered by the "Export ... CSV" buttons on the
+  dashboard (which use whatever backend URL/time window is already set
+  on the page).
 
 ## Running continuously (systemd services)
 

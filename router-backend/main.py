@@ -13,11 +13,14 @@ reachable from other devices on your LAN, like your phone, not just
 from this machine.
 """
 
+import csv
+import io
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import Depends, FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import Integer, func
 from sqlalchemy.orm import Session
@@ -348,3 +351,104 @@ def list_alerts(
         }
         for a in rows
     ]
+
+
+def _csv_response(rows: list[dict], filename: str) -> Response:
+    """Builds a downloadable CSV response from a list of dicts. Browsers
+    trigger a save-file dialog (rather than displaying the CSV inline)
+    because of the Content-Disposition: attachment header below -- this
+    is what makes '/export/...' work as a one-click download link from
+    the dashboard, no separate file-transfer protocol needed."""
+    output = io.StringIO()
+    if rows:
+        writer = csv.DictWriter(output, fieldnames=list(rows[0].keys()))
+        writer.writeheader()
+        writer.writerows(rows)
+    else:
+        output.write("")  # empty file rather than an error for a zero-row window
+
+    return Response(
+        content=output.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@app.get("/export/flows")
+def export_flows(
+    since_minutes: int = Query(60, description="Export flows from the last N minutes"),
+    limit: int = Query(5000, le=50000),
+    db: Session = Depends(get_db),
+):
+    """Downloads raw flow records as a CSV file."""
+    cutoff = datetime.now(timezone.utc) - timedelta(minutes=since_minutes)
+    rows = (
+        db.query(NetworkFlow)
+        .filter(NetworkFlow.timestamp >= cutoff)
+        .order_by(NetworkFlow.timestamp.desc())
+        .limit(limit)
+        .all()
+    )
+    data = [
+        {
+            "timestamp": f.timestamp, "device_id": f.device_id, "src_ip": f.src_ip,
+            "dst_ip": f.dst_ip, "dst_port": f.dst_port, "protocol": f.protocol,
+            "bytes_sent": f.bytes_sent, "bytes_recv": f.bytes_recv,
+        }
+        for f in rows
+    ]
+    filename = f"hackcheck-flows-{since_minutes}min.csv"
+    return _csv_response(data, filename)
+
+
+@app.get("/export/alerts")
+def export_alerts(
+    since_minutes: int = Query(1440, description="Export alerts from the last N minutes (default 24h)"),
+    limit: int = Query(5000, le=50000),
+    db: Session = Depends(get_db),
+):
+    """Downloads Suricata alert records as a CSV file."""
+    cutoff = datetime.now(timezone.utc) - timedelta(minutes=since_minutes)
+    rows = (
+        db.query(SecurityAlert)
+        .filter(SecurityAlert.timestamp >= cutoff)
+        .order_by(SecurityAlert.severity.asc(), SecurityAlert.timestamp.desc())
+        .limit(limit)
+        .all()
+    )
+    data = [
+        {
+            "timestamp": a.timestamp, "severity": a.severity, "signature": a.signature,
+            "category": a.category, "src_ip": a.src_ip, "dst_ip": a.dst_ip,
+            "protocol": a.protocol,
+        }
+        for a in rows
+    ]
+    filename = f"hackcheck-alerts-{since_minutes}min.csv"
+    return _csv_response(data, filename)
+
+
+@app.get("/export/dns-queries")
+def export_dns_queries(
+    since_minutes: int = Query(60, description="Export DNS queries from the last N minutes"),
+    limit: int = Query(5000, le=50000),
+    db: Session = Depends(get_db),
+):
+    """Downloads Pi-hole DNS query records as a CSV file."""
+    cutoff = datetime.now(timezone.utc) - timedelta(minutes=since_minutes)
+    rows = (
+        db.query(DnsQuery)
+        .filter(DnsQuery.timestamp >= cutoff)
+        .order_by(DnsQuery.timestamp.desc())
+        .limit(limit)
+        .all()
+    )
+    data = [
+        {
+            "timestamp": q.timestamp, "domain": q.domain, "client_ip": q.client_ip,
+            "query_type": q.query_type, "blocked": q.blocked,
+        }
+        for q in rows
+    ]
+    filename = f"hackcheck-dns-queries-{since_minutes}min.csv"
+    return _csv_response(data, filename)

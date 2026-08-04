@@ -82,6 +82,9 @@
   <label>Backend <input id="baseUrl" value="http://localhost:8000" /></label>
   <label>Last <input id="sinceMinutes" type="number" value="60" min="1" /> min</label>
   <button id="refreshBtn">Refresh</button>
+  <button id="exportFlowsBtn">Export flows CSV</button>
+  <button id="exportAlertsBtn">Export alerts CSV</button>
+  <button id="exportDnsBtn">Export DNS CSV</button>
   <span id="status"></span>
   <a href="/static/topology.html">View network topology graph &rarr;</a>
 </header>
@@ -258,7 +261,19 @@ async function refresh() {
   }
 }
 
+function exportCsv(path) {
+  const baseUrl = document.getElementById('baseUrl').value.replace(/\/$/, '');
+  const since = document.getElementById('sinceMinutes').value || 60;
+  // Plain navigation, not fetch -- the backend's Content-Disposition:
+  // attachment header makes the browser handle this as a native file
+  // download on its own, no blob/fetch handling needed.
+  window.location.href = `${baseUrl}${path}?since_minutes=${since}`;
+}
+
 document.getElementById('refreshBtn').addEventListener('click', refresh);
+document.getElementById('exportFlowsBtn').addEventListener('click', () => exportCsv('/export/flows'));
+document.getElementById('exportAlertsBtn').addEventListener('click', () => exportCsv('/export/alerts'));
+document.getElementById('exportDnsBtn').addEventListener('click', () => exportCsv('/export/dns-queries'));
 refresh();
 </script>
 
