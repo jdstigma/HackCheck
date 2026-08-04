@@ -146,7 +146,7 @@ suspend fun geolocateCellTower(cell: CellTowerInfo, apiKey: String): CellTowerLo
 // HttpURLConnection doesn't implement Closeable pre-API 19 semantics cleanly;
 // this small extension keeps the `.use { }` pattern consistent with the rest
 // of the codebase's try/use conventions.
-private fun HttpURLConnection.use(block: (HttpURLConnection) -> CellTowerLocation?): CellTowerLocation? {
+private inline fun HttpURLConnection.use(block: (HttpURLConnection) -> CellTowerLocation?): CellTowerLocation? {
     return try {
         block(this)
     } finally {
