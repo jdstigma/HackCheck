@@ -2,32 +2,33 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<title>HackCheck -- Router Dashboard</title>
+<title>HackCheck -- Command Center</title>
 <style>
+  * { box-sizing: border-box; }
   body {
     font-family: -apple-system, system-ui, sans-serif;
     margin: 0;
-    background: #111318;
+    background: #0b0d12;
     color: #e6e6e6;
   }
   header {
     display: flex;
-    gap: 8px;
+    gap: 10px;
     align-items: center;
     padding: 12px 16px;
-    background: #1b1e26;
-    border-bottom: 1px solid #2c303a;
+    background: #14171f;
+    border-bottom: 1px solid #262b36;
     flex-wrap: wrap;
   }
-  header h1 { font-size: 16px; margin: 0 16px 0 0; font-weight: 600; }
+  header h1 { font-size: 16px; margin: 0 12px 0 0; font-weight: 700; letter-spacing: 0.02em; }
   header input {
-    background: #262a34;
-    border: 1px solid #3a3f4b;
+    background: #1e222c;
+    border: 1px solid #33394a;
     color: #e6e6e6;
     padding: 6px 8px;
     border-radius: 4px;
   }
-  header input#baseUrl { width: 240px; }
+  header input#baseUrl { width: 220px; }
   header input#sinceMinutes { width: 60px; }
   header button {
     background: #3a6ea5;
@@ -38,79 +39,148 @@
     cursor: pointer;
   }
   header button:hover { background: #4a7fb5; }
-  header a { color: #7bb3e8; font-size: 13px; margin-left: auto; }
-  #status { font-size: 13px; color: #9aa0ac; }
+  header label { display: flex; align-items: center; gap: 6px; font-size: 13px; color: #9aa0ac; }
+  #status { font-size: 12px; color: #6a707c; margin-left: auto; }
+  a.topLink { color: #7bb3e8; font-size: 13px; text-decoration: none; }
 
-  main {
-    padding: 16px;
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
-    gap: 16px;
+  #alertBanner {
+    display: none;
+    background: linear-gradient(90deg, #4a1414, #6a1a1a);
+    border-bottom: 1px solid #8a2626;
+    color: #ffdada;
+    padding: 10px 16px;
+    font-weight: 600;
+    font-size: 14px;
   }
+  #alertBanner.show { display: block; }
+
+  main { padding: 16px; }
+
+  .statGrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+  .statCard {
+    background: #14171f;
+    border: 1px solid #262b36;
+    border-radius: 8px;
+    padding: 12px 14px;
+  }
+  .statCard .label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #6a707c;
+  }
+  .statCard .value {
+    font-size: 26px;
+    font-weight: 700;
+    margin-top: 4px;
+    font-variant-numeric: tabular-nums;
+  }
+  .statCard .sub {
+    font-size: 12px;
+    color: #9aa0ac;
+    margin-top: 2px;
+  }
+  .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; }
+  .dot.up { background: #4caf50; }
+  .dot.down { background: #6a707c; }
+  .dot.alert { background: #ff6a6a; }
+
+  .grid2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 16px;
+  }
+  @media (max-width: 900px) {
+    .grid2 { grid-template-columns: 1fr; }
+  }
+
   section {
-    background: #1b1e26;
-    border: 1px solid #2c303a;
+    background: #14171f;
+    border: 1px solid #262b36;
     border-radius: 8px;
     padding: 14px 16px;
+    margin-bottom: 16px;
   }
   section h2 {
-    font-size: 14px;
+    font-size: 13px;
     text-transform: uppercase;
     letter-spacing: 0.04em;
     color: #9aa0ac;
     margin: 0 0 10px 0;
   }
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  th, td {
-    text-align: left;
-    padding: 6px 8px;
-    border-bottom: 1px solid #262a34;
-  }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #1e222c; }
   th { color: #9aa0ac; font-weight: 500; }
   .empty { color: #6a707c; font-size: 13px; padding: 8px 0; }
   .bytes { font-variant-numeric: tabular-nums; }
-  .severity-1 { color: #ff6a6a; font-weight: 600; }
+  .severity-1 { color: #ff6a6a; font-weight: 700; }
   .severity-2 { color: #ffb84d; }
   .severity-3 { color: #9aa0ac; }
   .blocked { color: #ff6a6a; }
+
+  #topologyFrame {
+    width: 100%;
+    height: 420px;
+    border: none;
+    border-radius: 6px;
+    background: #0b0d12;
+  }
 </style>
 </head>
 <body>
 
+<div id="alertBanner"></div>
+
 <header>
-  <h1>HackCheck Router Dashboard</h1>
+  <h1>HACKCHECK COMMAND CENTER</h1>
   <label>Backend <input id="baseUrl" value="http://localhost:8000" /></label>
   <label>Last <input id="sinceMinutes" type="number" value="60" min="1" /> min</label>
   <button id="refreshBtn">Refresh</button>
-  <button id="exportFlowsBtn">Export flows CSV</button>
-  <button id="exportAlertsBtn">Export alerts CSV</button>
-  <button id="exportDnsBtn">Export DNS CSV</button>
+  <label><input id="autoRefreshToggle" type="checkbox" checked /> Auto-refresh <input id="autoRefreshSeconds" type="number" value="30" min="5" style="width:50px;" />s</label>
+  <button id="exportFlowsBtn">Export flows</button>
+  <button id="exportAlertsBtn">Export alerts</button>
+  <button id="exportDnsBtn">Export DNS</button>
   <span id="status"></span>
-  <a href="/static/topology.html">View network topology graph &rarr;</a>
+  <a class="topLink" href="/static/topology.html">Full topology graph &rarr;</a>
 </header>
 
 <main>
-  <section style="grid-column: 1 / -1;">
-    <h2>Security alerts (Suricata)</h2>
-    <div id="alerts"></div>
-  </section>
+  <div class="statGrid" id="statGrid"></div>
 
   <section>
-    <h2>Top talkers</h2>
-    <div id="topTalkers"></div>
+    <h2>Network topology</h2>
+    <iframe id="topologyFrame" src=""></iframe>
   </section>
+
+  <div class="grid2">
+    <section>
+      <h2>Top talkers</h2>
+      <div id="topTalkers"></div>
+    </section>
+    <section>
+      <h2>Alerts (Suricata)</h2>
+      <div id="alerts"></div>
+    </section>
+  </div>
+
+  <div class="grid2">
+    <section>
+      <h2>Known devices</h2>
+      <div id="devices"></div>
+    </section>
+    <section>
+      <h2>Top DNS domains (Pi-hole)</h2>
+      <div id="topDomains"></div>
+    </section>
+  </div>
 
   <section>
-    <h2>Known devices</h2>
-    <div id="devices"></div>
-  </section>
-
-  <section>
-    <h2>Top DNS domains (Pi-hole)</h2>
-    <div id="topDomains"></div>
-  </section>
-
-  <section style="grid-column: 1 / -1;">
     <h2>Recent flows</h2>
     <div id="flows"></div>
   </section>
@@ -118,6 +188,7 @@
 
 <script>
 const statusEl = document.getElementById('status');
+let autoRefreshTimer = null;
 
 function formatBytes(bytes) {
   if (bytes < 1024) return bytes + ' B';
@@ -133,6 +204,63 @@ function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
   }[c]));
+}
+
+function currentBaseUrl() {
+  return document.getElementById('baseUrl').value.replace(/\/$/, '');
+}
+function currentSinceMinutes() {
+  return document.getElementById('sinceMinutes').value || 60;
+}
+
+function renderStatCards({ devices, talkers, alerts, topDomains, flows, ntopngUp }) {
+  const criticalCount = alerts.filter(a => a.severity === 1).length;
+  const blockedDns = topDomains.reduce((sum, d) => sum + (d.blocked_count || 0), 0);
+  const topTalker = talkers[0];
+
+  const cards = [
+    { label: 'Devices', value: devices.length, sub: '' },
+    {
+      label: 'Alerts',
+      value: alerts.length,
+      sub: criticalCount > 0 ? `${criticalCount} critical` : 'none critical',
+      valueColor: criticalCount > 0 ? '#ff6a6a' : undefined,
+    },
+    { label: 'DNS blocked', value: blockedDns, sub: `of ${topDomains.reduce((s, d) => s + d.query_count, 0)} queries` },
+    { label: 'Recent flows', value: flows.length, sub: '' },
+    {
+      label: 'Top talker',
+      value: topTalker ? formatBytes(topTalker.total_bytes) : '--',
+      sub: topTalker ? (topTalker.hostname || topTalker.mac_address || 'unknown') : 'no data',
+    },
+    {
+      label: 'ntopng',
+      value: ntopngUp ? 'UP' : 'DOWN',
+      valueColor: ntopngUp ? '#4caf50' : '#6a707c',
+      sub: '',
+    },
+  ];
+
+  const el = document.getElementById('statGrid');
+  el.innerHTML = cards.map(c => `
+    <div class="statCard">
+      <div class="label">${escapeHtml(c.label)}</div>
+      <div class="value" style="${c.valueColor ? `color:${c.valueColor}` : ''}">${escapeHtml(c.value)}</div>
+      <div class="sub">${escapeHtml(c.sub)}</div>
+    </div>
+  `).join('');
+}
+
+function renderAlertBanner(alerts) {
+  const banner = document.getElementById('alertBanner');
+  const critical = alerts.filter(a => a.severity === 1);
+  if (critical.length === 0) {
+    banner.classList.remove('show');
+    return;
+  }
+  banner.classList.add('show');
+  banner.textContent = `${critical.length} critical alert${critical.length === 1 ? '' : 's'}: ${critical[0].signature}` +
+    (critical.length > 1 ? ` (+${critical.length - 1} more)` : '');
 }
 
 function renderTopTalkers(rows) {
@@ -194,17 +322,16 @@ function renderFlows(rows) {
 
 function renderAlerts(rows) {
   const el = document.getElementById('alerts');
-  if (!rows.length) { el.innerHTML = '<div class="empty">No alerts in this window. (Needs Suricata configured and eve.json flowing -- see /router-backend/README.md.)</div>'; return; }
+  if (!rows.length) { el.innerHTML = '<div class="empty">No alerts in this window. (Needs Suricata configured and eve.json flowing.)</div>'; return; }
   el.innerHTML = `
     <table>
-      <thead><tr><th>Time</th><th>Severity</th><th>Signature</th><th>Category</th><th>Source</th><th>Destination</th></tr></thead>
+      <thead><tr><th>Time</th><th>Sev</th><th>Signature</th><th>Source</th><th>Dest</th></tr></thead>
       <tbody>
         ${rows.map(a => `
           <tr>
             <td>${escapeHtml(a.timestamp)}</td>
             <td class="severity-${a.severity || 3}">${a.severity != null ? escapeHtml(a.severity) : '?'}</td>
             <td>${escapeHtml(a.signature)}</td>
-            <td>${escapeHtml(a.category || '?')}</td>
             <td>${escapeHtml(a.src_ip || '?')}</td>
             <td>${escapeHtml(a.dst_ip || '?')}</td>
           </tr>
@@ -215,7 +342,7 @@ function renderAlerts(rows) {
 
 function renderTopDomains(rows) {
   const el = document.getElementById('topDomains');
-  if (!rows.length) { el.innerHTML = '<div class="empty">No DNS queries in this window. (Needs Pi-hole configured -- see /router-backend/README.md.)</div>'; return; }
+  if (!rows.length) { el.innerHTML = '<div class="empty">No DNS queries in this window. (Needs Pi-hole configured.)</div>'; return; }
   el.innerHTML = `
     <table>
       <thead><tr><th>Domain</th><th>Queries</th><th>Blocked</th></tr></thead>
@@ -237,44 +364,69 @@ async function fetchJson(url) {
   return res.json();
 }
 
+function exportCsv(path) {
+  const baseUrl = currentBaseUrl();
+  const since = currentSinceMinutes();
+  window.location.href = `${baseUrl}${path}?since_minutes=${since}`;
+}
+
 async function refresh() {
-  const baseUrl = document.getElementById('baseUrl').value.replace(/\/$/, '');
-  const since = document.getElementById('sinceMinutes').value || 60;
+  const baseUrl = currentBaseUrl();
+  const since = currentSinceMinutes();
+
+  const topologyFrame = document.getElementById('topologyFrame');
+  const desiredSrc = '/static/topology.html';
+  if (topologyFrame.getAttribute('src') !== desiredSrc) {
+    topologyFrame.setAttribute('src', desiredSrc);
+  }
 
   statusEl.textContent = 'Loading...';
   try {
-    const [talkers, devices, flows, alerts, topDomains] = await Promise.all([
+    const [talkers, devices, flows, alerts, topDomains, ntopngStatus] = await Promise.all([
       fetchJson(`${baseUrl}/top-talkers?since_minutes=${since}&limit=10`),
       fetchJson(`${baseUrl}/devices`),
       fetchJson(`${baseUrl}/flows?since_minutes=${since}&limit=50`),
       fetchJson(`${baseUrl}/alerts?since_minutes=${since}&limit=50`),
       fetchJson(`${baseUrl}/dns-top-domains?since_minutes=${since}&limit=15`),
+      fetchJson(`${baseUrl}/ntopng/status`).catch(() => ({ active: false })),
     ]);
+
+    renderStatCards({ devices, talkers, alerts, topDomains, flows, ntopngUp: !!ntopngStatus.active });
+    renderAlertBanner(alerts);
     renderTopTalkers(talkers);
     renderDevices(devices);
     renderFlows(flows);
     renderAlerts(alerts);
     renderTopDomains(topDomains);
-    statusEl.textContent = `Updated -- ${devices.length} devices, ${flows.length} recent flows, ${alerts.length} alerts`;
+
+    const now = new Date().toLocaleTimeString();
+    statusEl.textContent = `Updated ${now} -- ${devices.length} devices, ${flows.length} flows, ${alerts.length} alerts`;
   } catch (err) {
     statusEl.textContent = `Error: ${err.message}`;
   }
 }
 
-function exportCsv(path) {
-  const baseUrl = document.getElementById('baseUrl').value.replace(/\/$/, '');
-  const since = document.getElementById('sinceMinutes').value || 60;
-  // Plain navigation, not fetch -- the backend's Content-Disposition:
-  // attachment header makes the browser handle this as a native file
-  // download on its own, no blob/fetch handling needed.
-  window.location.href = `${baseUrl}${path}?since_minutes=${since}`;
+function setupAutoRefresh() {
+  if (autoRefreshTimer) {
+    clearInterval(autoRefreshTimer);
+    autoRefreshTimer = null;
+  }
+  const enabled = document.getElementById('autoRefreshToggle').checked;
+  const seconds = parseInt(document.getElementById('autoRefreshSeconds').value, 10) || 30;
+  if (enabled) {
+    autoRefreshTimer = setInterval(refresh, seconds * 1000);
+  }
 }
 
 document.getElementById('refreshBtn').addEventListener('click', refresh);
 document.getElementById('exportFlowsBtn').addEventListener('click', () => exportCsv('/export/flows'));
 document.getElementById('exportAlertsBtn').addEventListener('click', () => exportCsv('/export/alerts'));
 document.getElementById('exportDnsBtn').addEventListener('click', () => exportCsv('/export/dns-queries'));
+document.getElementById('autoRefreshToggle').addEventListener('change', setupAutoRefresh);
+document.getElementById('autoRefreshSeconds').addEventListener('change', setupAutoRefresh);
+
 refresh();
+setupAutoRefresh();
 </script>
 
 </body>

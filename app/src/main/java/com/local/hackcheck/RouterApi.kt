@@ -46,6 +46,23 @@ data class NtopngControlResult(
     val message: String,
 )
 
+data class SecurityAlertInfo(
+    val id: Int,
+    val deviceId: Int?,
+    val timestamp: String,
+    val signature: String,
+    val severity: Int?,
+    val category: String?,
+    val srcIp: String?,
+    val dstIp: String?,
+)
+
+data class TopDnsDomain(
+    val domain: String,
+    val queryCount: Int,
+    val blockedCount: Int,
+)
+
 /**
  * Thin client for the router-backend FastAPI service (see /router-backend
  * in the repo). Base URL is your backend's LAN address, e.g.
@@ -196,5 +213,36 @@ object RouterApi {
         val ok = result.optBoolean("ok", false)
         val message = if (ok) "Stopped" else result.optString("stderr", "Failed to stop -- check backend logs")
         return NtopngControlResult(ok, message)
+    }
+
+    suspend fun fetchAlerts(baseUrl: String, sinceMinutes: Int = 1440, limit: Int = 100): List<SecurityAlertInfo> {
+        val url = "$baseUrl/alerts?since_minutes=$sinceMinutes&limit=$limit"
+        val array = getJson(url) as? JSONArray ?: return emptyList()
+        return (0 until array.length()).mapNotNull { i ->
+            val obj = array.optJSONObject(i) ?: return@mapNotNull null
+            SecurityAlertInfo(
+                id = obj.optInt("id"),
+                deviceId = obj.optInt("device_id").takeIf { obj.has("device_id") && !obj.isNull("device_id") },
+                timestamp = obj.optString("timestamp"),
+                signature = obj.optString("signature"),
+                severity = obj.optInt("severity").takeIf { obj.has("severity") && !obj.isNull("severity") },
+                category = obj.optString("category").takeIf { it != "null" && it.isNotBlank() },
+                srcIp = obj.optString("src_ip").takeIf { it != "null" && it.isNotBlank() },
+                dstIp = obj.optString("dst_ip").takeIf { it != "null" && it.isNotBlank() },
+            )
+        }
+    }
+
+    suspend fun fetchTopDnsDomains(baseUrl: String, sinceMinutes: Int = 60, limit: Int = 20): List<TopDnsDomain> {
+        val url = "$baseUrl/dns-top-domains?since_minutes=$sinceMinutes&limit=$limit"
+        val array = getJson(url) as? JSONArray ?: return emptyList()
+        return (0 until array.length()).mapNotNull { i ->
+            val obj = array.optJSONObject(i) ?: return@mapNotNull null
+            TopDnsDomain(
+                domain = obj.optString("domain"),
+                queryCount = obj.optInt("query_count"),
+                blockedCount = obj.optInt("blocked_count"),
+            )
+        }
     }
 }

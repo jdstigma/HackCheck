@@ -152,15 +152,23 @@ network-diagnostics companions to everything else on this box.
 
 Two browser-based views live under `/static`, once `main.py` is running:
 
-- **`http://localhost:8000/static/dashboard.html`** -- top talkers, known
-  devices, and recent flows as readable tables. This is the main view for
-  day-to-day checking; start here.
-- **`http://localhost:8000/static/topology.html`** -- a force-directed
-  graph of every endpoint your network has talked to, green nodes are
-  known devices (matched by MAC), blue nodes are external endpoints, edge
-  thickness scales with traffic volume. Multiple flows between the same
-  src/dst pair aggregate into one edge rather than drawing separately, so
-  the graph stays readable.
+- **`http://localhost:8000/static/dashboard.html`** -- command-center
+  style overview: stat cards (devices, alerts, DNS blocked, top talker,
+  ntopng status), a critical-alert banner that only appears when a
+  severity-1 Suricata alert exists, an embedded live topology graph, and
+  the same tables as before (top talkers, devices, alerts, top DNS
+  domains, recent flows) laid out two-up rather than stacked. Auto-refresh
+  is on by default (30s, adjustable, toggleable) -- built with a
+  touchscreen-attached Pi in mind, meant to be glanced at rather than
+  actively operated. CSV export buttons for flows/alerts/DNS queries are
+  in the header. This is the main view for day-to-day checking; start
+  here.
+- **`http://localhost:8000/static/topology.html`** -- the standalone
+  version of the same force-directed graph embedded in the dashboard
+  above, green nodes are known devices (matched by MAC), blue nodes are
+  external endpoints, edge thickness scales with traffic volume. Multiple
+  flows between the same src/dst pair aggregate into one edge rather than
+  drawing separately, so the graph stays readable.
 
 Both pages link to each other, and both have the backend URL and time
 window editable directly on the page (same pattern as the Android app's
@@ -168,7 +176,8 @@ Router screen) since they'll differ per deployment.
 
 Built with vanilla JS + vis-network (topology graph only, loaded from a
 CDN, no build step). The data-handling logic in both pages (`formatBytes`,
-`escapeHtml`, the render functions, and the `/topology` endpoint's
+`escapeHtml`, the render functions, the stat-card computations, the
+critical-alert banner logic, and the `/topology` endpoint's
 aggregation logic) was tested by extracting the JS and actually executing
 it against real API-shaped data -- including edge cases like null
 hostnames and HTML-escaping untrusted device-reported strings -- but the

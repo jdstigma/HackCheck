@@ -103,6 +103,12 @@ fun HackCheckApp() {
     var topTalkers by remember { mutableStateOf<List<TopTalker>>(emptyList()) }
     var routerDevices by remember { mutableStateOf<List<RouterDevice>>(emptyList()) }
 
+    // Security screen state (Suricata alerts + Pi-hole top domains) --
+    // reuses routerBaseUrl rather than its own separate URL field
+    var securityAlerts by remember { mutableStateOf<List<SecurityAlertInfo>>(emptyList()) }
+    var securityTopDomains by remember { mutableStateOf<List<TopDnsDomain>>(emptyList()) }
+    var checkingSecurity by remember { mutableStateOf(false) }
+
     // App data usage state (no hardware needed -- shown at the top of the
     // Router screen as the no-setup alternative to the ntopng path below it)
     var routerAppUsage by remember { mutableStateOf<DataUsageResult?>(null) }
@@ -237,6 +243,15 @@ fun HackCheckApp() {
         }
     }
 
+    fun refreshSecurityData() {
+        checkingSecurity = true
+        scope.launch(Dispatchers.Default) {
+            securityAlerts = RouterApi.fetchAlerts(routerBaseUrl)
+            securityTopDomains = RouterApi.fetchTopDnsDomains(routerBaseUrl)
+            checkingSecurity = false
+        }
+    }
+
     fun loadDeviceDetail(device: RouterDevice) {
         selectedRouterDevice = device
         loadingDeviceDetail = true
@@ -323,6 +338,11 @@ fun HackCheckApp() {
         topTalkers.isEmpty() && routerDevices.isEmpty() -> "Not checked yet"
         else -> "${routerDevices.size} devices, ${topTalkers.size} top talkers"
     }
+    val securitySubtitle = when {
+        checkingSecurity -> "Checking..."
+        securityAlerts.isEmpty() && securityTopDomains.isEmpty() -> "Not checked yet"
+        else -> "${securityAlerts.size} alerts, ${securityTopDomains.size} DNS domains"
+    }
     val rfSweepSubtitle = when {
         scanningWifi || scanningBle -> "Scanning..."
         wifiNetworks.isEmpty() && bleDevices.isEmpty() -> "Not checked yet"
@@ -365,6 +385,7 @@ fun HackCheckApp() {
                     rfSweepSubtitle = rfSweepSubtitle,
                     cellTowerSubtitle = cellTowerSubtitle,
                     routerSubtitle = routerSubtitle,
+                    securitySubtitle = securitySubtitle,
                     monitorSubtitle = monitorSubtitle,
                     captureSubtitle = captureSubtitle,
                     toolsSubtitle = toolsSubtitle,
@@ -466,6 +487,14 @@ fun HackCheckApp() {
                     loading = loadingDeviceDetail,
                     onRefresh = { selectedRouterDevice?.let { loadDeviceDetail(it) } },
                     onBack = { currentScreen = Screen.Router },
+                )
+
+                Screen.Security -> SecurityScreen(
+                    backendUrl = routerBaseUrl,
+                    alerts = securityAlerts,
+                    topDomains = securityTopDomains,
+                    checking = checkingSecurity,
+                    onRefresh = { refreshSecurityData() },
                 )
 
                 Screen.NtopngBoxInfo -> NtopngBoxInfoScreen()

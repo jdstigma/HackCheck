@@ -21,6 +21,7 @@ fun HomeScreen(
     rfSweepSubtitle: String,
     cellTowerSubtitle: String,
     routerSubtitle: String,
+    securitySubtitle: String,
     monitorSubtitle: String,
     captureSubtitle: String,
     toolsSubtitle: String,
@@ -38,6 +39,7 @@ fun HomeScreen(
         MenuButton("Wireless Sweep", rfSweepSubtitle) { onOpen(Screen.RfSweep) }
         MenuButton("Cell Tower Locator", cellTowerSubtitle) { onOpen(Screen.CellTower) }
         MenuButton("Router", routerSubtitle) { onOpen(Screen.Router) }
+        MenuButton("Security", securitySubtitle) { onOpen(Screen.Security) }
         MenuButton("Background Monitoring", monitorSubtitle) { onOpen(Screen.Monitor) }
         if (CAPTURE_FEATURE_ENABLED) {
             MenuButton("Traffic Capture", captureSubtitle) { onOpen(Screen.Capture) }
