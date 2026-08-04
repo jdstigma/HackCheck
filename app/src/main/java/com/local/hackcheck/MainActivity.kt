@@ -85,6 +85,7 @@ fun HackCheckApp() {
     var cellTowers by remember { mutableStateOf<List<CellTowerInfo>>(emptyList()) }
     var cellTowerLocations by remember { mutableStateOf<Map<Long, CellTowerLocation?>>(emptyMap()) }
     var checkingCellTowers by remember { mutableStateOf(false) }
+    var lastCellScanDiagnostics by remember { mutableStateOf<CellScanDiagnostics?>(null) }
     val cellTowerHistoryDb = remember { CellTowerHistoryDb(context) }
     var seenTowers by remember { mutableStateOf<List<SeenTower>>(emptyList()) }
 
@@ -194,8 +195,10 @@ fun HackCheckApp() {
     fun runCellTowerChecks() {
         checkingCellTowers = true
         scope.launch(Dispatchers.Default) {
-            val cells = visibleCellTowers(context)
+            val scanResult = visibleCellTowers(context)
+            val cells = scanResult.cells
             cellTowers = cells
+            lastCellScanDiagnostics = scanResult.diagnostics
             val locations = cells.associate { cell ->
                 cell.cellId to geolocateCellTower(cell, openCellIdApiKey)
             }
@@ -445,6 +448,7 @@ fun HackCheckApp() {
                     locations = cellTowerLocations,
                     checking = checkingCellTowers,
                     seenTowerCount = seenTowers.size,
+                    diagnostics = lastCellScanDiagnostics,
                     onCheck = { cellTowerPermissionLauncher.launch(networkPermissionsToRequest) },
                     onViewHistory = { currentScreen = Screen.CellTowerHistory },
                 )

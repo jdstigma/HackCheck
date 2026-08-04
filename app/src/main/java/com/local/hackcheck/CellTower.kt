@@ -35,6 +35,36 @@ data class CellTowerLocation(
 )
 
 /**
+ * Tells the caller how the last visibleCellTowers() result was actually
+ * obtained -- added after a fresh-scan fix (requestCellInfoUpdate) still
+ * reportedly returned the same tower after driving well away from it, to
+ * distinguish "the modem gave us fresh data and it's genuinely unchanged"
+ * from "the app silently fell back to a cached/errored read again."
+ */
+enum class CellScanSource {
+    FRESH,              // requestCellInfoUpdate's callback fired with data before the timeout
+    FRESH_EMPTY,        // callback fired but with an empty list (modem reported no cells)
+    CALLBACK_ERROR,     // onError fired -- fell back to the cached allCellInfo read
+    TIMEOUT,            // callback never fired within 5s -- fell back to the cached allCellInfo read
+    NO_PERMISSION,
+    NO_TELEPHONY_MANAGER,
+    SECURITY_EXCEPTION,
+}
+
+data class CellScanDiagnostics(
+    val source: CellScanSource,
+    val rawCellCount: Int,
+    val elapsedMs: Long,
+    val timestampMillis: Long,
+    val detail: String? = null,
+)
+
+data class CellScanResult(
+    val cells: List<CellTowerInfo>,
+    val diagnostics: CellScanDiagnostics,
+)
+
+/**
  * Reads currently visible cell towers (serving + neighbors). Requires
  * ACCESS_FINE_LOCATION -- Android treats cell tower data as location data
  * even though this isn't a GPS read. Both permissions are already requested
@@ -45,18 +75,29 @@ data class CellTowerLocation(
  * observed returning a tower from miles away after driving well outside its
  * range, since the modem hadn't been prompted to re-scan. Falls back to the
  * cached allCellInfo if the fresh request doesn't respond within 5s (some
- * OEM basebands don't reliably invoke the callback).
+ * OEM basebands don't reliably invoke the callback). Returns diagnostics
+ * alongside the result so the UI can show which path actually produced the
+ * data -- a repeat of the "same tower persists" symptom even after this fix
+ * needs to distinguish a real fresh-but-unchanged reading (e.g. the modem
+ * genuinely never re-registered to a new cell) from the fresh-scan path
+ * silently failing and quietly falling back to the stale cache again.
  */
-suspend fun visibleCellTowers(context: Context): List<CellTowerInfo> {
+suspend fun visibleCellTowers(context: Context): CellScanResult {
+    val now = System.currentTimeMillis()
+
     if (context.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) !=
         PackageManager.PERMISSION_GRANTED
     ) {
-        return emptyList()
+        return CellScanResult(emptyList(), CellScanDiagnostics(CellScanSource.NO_PERMISSION, 0, 0, now))
     }
     val tm = context.getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager
-        ?: return emptyList()
+        ?: return CellScanResult(emptyList(), CellScanDiagnostics(CellScanSource.NO_TELEPHONY_MANAGER, 0, 0, now))
 
-    val cells = try {
+    val startMs = System.currentTimeMillis()
+    var source = CellScanSource.FRESH
+    var detail: String? = null
+
+    val rawCells: List<CellInfo> = try {
         withTimeoutOrNull(5000) {
             suspendCancellableCoroutine<List<CellInfo>> { cont ->
                 tm.requestCellInfoUpdate(
@@ -65,18 +106,32 @@ suspend fun visibleCellTowers(context: Context): List<CellTowerInfo> {
                         override fun onCellInfo(cellInfo: MutableList<CellInfo>) {
                             if (cont.isActive) cont.resume(cellInfo)
                         }
-                        override fun onError(errorCode: Int, detail: Throwable?) {
-                            if (cont.isActive) cont.resume(emptyList())
+                        override fun onError(errorCode: Int, detail_: Throwable?) {
+                            source = CellScanSource.CALLBACK_ERROR
+                            detail = "errorCode=$errorCode ${detail_?.javaClass?.simpleName ?: ""} ${detail_?.message ?: ""}".trim()
+                            if (cont.isActive) cont.resume(tm.allCellInfo ?: emptyList())
                         }
                     },
                 )
             }
-        } ?: tm.allCellInfo ?: emptyList()
+        } ?: run {
+            source = CellScanSource.TIMEOUT
+            tm.allCellInfo ?: emptyList()
+        }
     } catch (e: SecurityException) {
+        source = CellScanSource.SECURITY_EXCEPTION
+        detail = e.message
         emptyList()
     }
 
-    return cells.mapNotNull { cell ->
+    if (source == CellScanSource.FRESH && rawCells.isEmpty()) {
+        source = CellScanSource.FRESH_EMPTY
+    }
+
+    val elapsedMs = System.currentTimeMillis() - startMs
+    val diagnostics = CellScanDiagnostics(source, rawCells.size, elapsedMs, System.currentTimeMillis(), detail)
+
+    val cells = rawCells.mapNotNull { cell ->
         when (cell) {
             is CellInfoLte -> {
                 val id = cell.cellIdentity
@@ -130,6 +185,8 @@ suspend fun visibleCellTowers(context: Context): List<CellTowerInfo> {
             else -> null
         }
     }
+
+    return CellScanResult(cells, diagnostics)
 }
 
 /**

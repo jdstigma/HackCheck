@@ -15,11 +15,15 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 @Composable
 fun CellTowerScreen(
@@ -27,6 +31,7 @@ fun CellTowerScreen(
     locations: Map<Long, CellTowerLocation?>,
     checking: Boolean,
     seenTowerCount: Int,
+    diagnostics: CellScanDiagnostics?,
     onCheck: () -> Unit,
     onViewHistory: () -> Unit,
 ) {
@@ -56,6 +61,10 @@ fun CellTowerScreen(
             modifier = Modifier.padding(top = 8.dp),
         )
 
+        if (diagnostics != null) {
+            ScanDiagnosticsCard(diagnostics)
+        }
+
         if (checking) {
             Column(
                 modifier = Modifier.fillMaxWidth().padding(top = 32.dp),
@@ -78,6 +87,45 @@ fun CellTowerScreen(
                     val uri = Uri.parse("geo:$lat,$lon?q=$lat,$lon(Cell+tower)")
                     context.startActivity(Intent(Intent.ACTION_VIEW, uri))
                 }
+            }
+        }
+    }
+}
+
+/**
+ * Shows how the last "Check nearby cell towers" tap actually got its data --
+ * added to diagnose a report of the same tower persisting after driving well
+ * away from it, even after switching to a forced-fresh-scan read. Lets a
+ * field test distinguish "modem gave fresh data, genuinely unchanged" from
+ * "the fresh-scan path silently failed and fell back to cache again."
+ */
+@Composable
+private fun ScanDiagnosticsCard(diagnostics: CellScanDiagnostics) {
+    val timeFormat = remember { SimpleDateFormat("HH:mm:ss", Locale.getDefault()) }
+    val (label, isFallback) = when (diagnostics.source) {
+        CellScanSource.FRESH -> "Fresh scan (${diagnostics.elapsedMs}ms)" to false
+        CellScanSource.FRESH_EMPTY -> "Fresh scan -- modem reported no cells (${diagnostics.elapsedMs}ms)" to false
+        CellScanSource.CALLBACK_ERROR -> "FELL BACK to cached data -- scan errored" to true
+        CellScanSource.TIMEOUT -> "FELL BACK to cached data -- scan timed out after 5s" to true
+        CellScanSource.NO_PERMISSION -> "Location permission not granted" to true
+        CellScanSource.NO_TELEPHONY_MANAGER -> "Telephony service unavailable" to true
+        CellScanSource.SECURITY_EXCEPTION -> "FELL BACK to cached data -- security exception" to true
+    }
+    Card(modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Text(
+                "Last scan diagnostics",
+                fontWeight = FontWeight.Bold,
+                style = MaterialTheme.typography.bodySmall,
+            )
+            Text(label, style = MaterialTheme.typography.bodySmall)
+            Text(
+                "Raw cells from modem: ${diagnostics.rawCellCount} -- at " +
+                    timeFormat.format(Date(diagnostics.timestampMillis)),
+                style = MaterialTheme.typography.bodySmall,
+            )
+            diagnostics.detail?.let {
+                Text(it, style = MaterialTheme.typography.bodySmall)
             }
         }
     }
