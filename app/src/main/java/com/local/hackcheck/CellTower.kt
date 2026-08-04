@@ -184,7 +184,11 @@ suspend fun visibleCellTowers(context: Context): CellScanResult {
             }
             else -> null
         }
-    }
+        // CellInfo.UNAVAILABLE (Int.MAX_VALUE, 2147483647) is Android's sentinel for
+        // "this field wasn't decoded" -- neighbor cells the modem can see signal-wise
+        // but hasn't fully identified yet report this instead of a real cell ID.
+        // Filter these out rather than showing a fake-looking "tower" with that ID.
+    }.filter { it.cellId != CellInfo.UNAVAILABLE.toLong() }
 
     return CellScanResult(cells, diagnostics)
 }
