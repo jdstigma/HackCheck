@@ -3,16 +3,20 @@ package com.local.hackcheck
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
+import android.telephony.CellInfo
 import android.telephony.CellInfoGsm
 import android.telephony.CellInfoLte
 import android.telephony.CellInfoNr
 import android.telephony.CellInfoWcdma
 import android.telephony.TelephonyManager
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
+import kotlin.coroutines.resume
 
 data class CellTowerInfo(
     val cellId: Long,
@@ -35,8 +39,15 @@ data class CellTowerLocation(
  * ACCESS_FINE_LOCATION -- Android treats cell tower data as location data
  * even though this isn't a GPS read. Both permissions are already requested
  * as part of the existing Network & Devices permission set.
+ *
+ * Uses requestCellInfoUpdate() to force a fresh modem scan rather than
+ * TelephonyManager.allCellInfo, which is documented as a cached snapshot --
+ * observed returning a tower from miles away after driving well outside its
+ * range, since the modem hadn't been prompted to re-scan. Falls back to the
+ * cached allCellInfo if the fresh request doesn't respond within 5s (some
+ * OEM basebands don't reliably invoke the callback).
  */
-fun visibleCellTowers(context: Context): List<CellTowerInfo> {
+suspend fun visibleCellTowers(context: Context): List<CellTowerInfo> {
     if (context.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) !=
         PackageManager.PERMISSION_GRANTED
     ) {
@@ -46,7 +57,21 @@ fun visibleCellTowers(context: Context): List<CellTowerInfo> {
         ?: return emptyList()
 
     val cells = try {
-        tm.allCellInfo ?: emptyList()
+        withTimeoutOrNull(5000) {
+            suspendCancellableCoroutine<List<CellInfo>> { cont ->
+                tm.requestCellInfoUpdate(
+                    context.mainExecutor,
+                    object : TelephonyManager.CellInfoCallback() {
+                        override fun onCellInfo(cellInfo: MutableList<CellInfo>) {
+                            if (cont.isActive) cont.resume(cellInfo)
+                        }
+                        override fun onError(errorCode: Int, detail: Throwable?) {
+                            if (cont.isActive) cont.resume(emptyList())
+                        }
+                    },
+                )
+            }
+        } ?: tm.allCellInfo ?: emptyList()
     } catch (e: SecurityException) {
         emptyList()
     }
