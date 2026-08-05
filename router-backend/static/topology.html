@@ -63,7 +63,7 @@
 <body>
 
 <div id="controls">
-  <label>Backend URL <input id="baseUrl" value="http://localhost:8000" /></label>
+  <label>Backend URL <input id="baseUrl" value="" /></label>
   <label>Last <input id="sinceMinutes" type="number" value="60" min="1" /> min</label>
   <button id="loadBtn">Load</button>
   <span id="status"></span>
@@ -147,6 +147,9 @@ function render(data) {
 }
 
 document.getElementById('loadBtn').addEventListener('click', loadTopology);
+// Default to the page's own origin rather than hardcoding localhost -- see
+// the same fix/comment in dashboard.html for why.
+document.getElementById('baseUrl').value = window.location.origin;
 // Load once on page open with the default values.
 loadTopology();
 </script>
