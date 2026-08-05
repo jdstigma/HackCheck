@@ -6,18 +6,18 @@ into Postgres on a loop.
 Run with:
     python poller.py
 
-IMPORTANT -- verify before relying on this:
-ntopng's REST API endpoint paths have changed across versions (v1 vs v2,
-and minor changes within v2). What's below targets the commonly
-documented v2 endpoint (/lua/rest/v2/get/flow/active.lua), with HTTP
-basic auth. Once your ntopng instance is actually running:
-  1. Log into its web UI and check Settings -> API / REST API docs for
-     your exact version, OR
-  2. Open browser dev tools while browsing ntopng's own "Active Flows"
-     page and see which endpoint it calls -- that's guaranteed correct
-     for your version.
-Adjust NTOPNG_FLOWS_ENDPOINT and the response-parsing in fetch_flows()
-to match what you actually get back.
+Auth note (confirmed against a real instance, ntopng 6.7.260707): the
+REST API does NOT accept HTTP Basic Auth -- unauthenticated/invalid
+requests get a 302 redirect to /lua/login.lua regardless of an
+Authorization header. It needs a real session cookie, obtained the same
+way the browser does: POST to /authorize.html with the login form's
+actual field names (found by inspecting the rendered login page's HTML --
+the visible username input is named `_username` for display only; JS
+copies it into the hidden `user` field before submit, which is what the
+server actually reads), then reuse that session's cookie for the REST
+calls. No CSRF token is required by this form. If ntopng's REST API
+paths change in a future version, adjust NTOPNG_FLOWS_ENDPOINT and the
+response-parsing in fetch_flows() to match.
 """
 
 import os
@@ -41,6 +41,29 @@ POLL_INTERVAL_SECONDS = int(os.getenv("POLL_INTERVAL_SECONDS", "60"))
 # See the module docstring -- confirm this matches your ntopng version.
 NTOPNG_FLOWS_ENDPOINT = "/lua/rest/v2/get/flow/active.lua"
 
+_session: requests.Session | None = None
+
+
+def _login() -> requests.Session:
+    """Logs into ntopng via its actual login form and returns a Session
+    carrying the resulting session cookie."""
+    session = requests.Session()
+    session.post(
+        f"{NTOPNG_URL}/authorize.html",
+        data={"user": NTOPNG_USERNAME, "password": NTOPNG_PASSWORD, "referer": ""},
+        timeout=10,
+    )
+    return session
+
+
+def _get_session() -> requests.Session:
+    """Reuses one logged-in session across polls rather than logging in
+    every cycle (wasteful, and repeated logins could trip rate limiting)."""
+    global _session
+    if _session is None:
+        _session = _login()
+    return _session
+
 
 def fetch_flows() -> list[dict]:
     """Calls ntopng's REST API and returns a list of raw flow dicts.
@@ -51,13 +74,16 @@ def fetch_flows() -> list[dict]:
         return []
 
     url = f"{NTOPNG_URL}{NTOPNG_FLOWS_ENDPOINT}"
+    global _session
     try:
-        response = requests.get(
-            url,
-            params={"ifid": 0},  # interface 0 -- adjust if ntopng is monitoring
-            auth=(NTOPNG_USERNAME, NTOPNG_PASSWORD),
-            timeout=10,
-        )
+        session = _get_session()
+        response = session.get(url, params={"ifid": 0}, timeout=10)
+        if "/lua/login.lua" in response.url:
+            # Session expired or the first login didn't take -- log in
+            # again once and retry, rather than silently returning empty
+            # forever (which is exactly what happened before this fix).
+            _session = _login()
+            response = _session.get(url, params={"ifid": 0}, timeout=10)
         response.raise_for_status()
         payload = response.json()
         # ntopng v2 REST responses typically wrap the real data in "rsp" --
