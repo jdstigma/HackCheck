@@ -46,8 +46,17 @@ _session: requests.Session | None = None
 
 def _login() -> requests.Session:
     """Logs into ntopng via its actual login form and returns a Session
-    carrying the resulting session cookie."""
+    carrying the resulting session cookie.
+
+    Connection: close is set on the session because ntopng's built-in
+    HTTP server doesn't reliably support keep-alive/connection reuse --
+    confirmed live: reusing the pooled connection from this login POST
+    for the next request got the connection forcibly closed mid-request
+    (RemoteDisconnected), even called back-to-back. Forcing a fresh TCP
+    connection per request avoids relying on that.
+    """
     session = requests.Session()
+    session.headers.update({"Connection": "close"})
     session.post(
         f"{NTOPNG_URL}/authorize.html",
         data={"user": NTOPNG_USERNAME, "password": NTOPNG_PASSWORD, "referer": ""},
