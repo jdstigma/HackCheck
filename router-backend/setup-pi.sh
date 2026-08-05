@@ -195,7 +195,13 @@ Wants=network-online.target
 [Service]
 Restart=on-failure
 ExecStartPre=-/usr/bin/docker rm -f ntopng
-ExecStart=/usr/bin/docker run --rm --name ntopng --net=host ${NTOPNG_IMAGE} -i ${SELECTED_IFACE}
+# --cap-add=NET_ADMIN is required for ntopng to put the mirrored interface
+# into promiscuous mode. Without it, Docker's default capability set
+# (NET_RAW) lets it capture the host's own traffic fine, but silently
+# can't see traffic addressed to other devices -- i.e. the actual point
+# of a mirrored port. Confirmed via tcpdump seeing full mirrored traffic
+# on the host while ntopng showed zero devices/flows.
+ExecStart=/usr/bin/docker run --rm --name ntopng --net=host --cap-add=NET_ADMIN ${NTOPNG_IMAGE} -i ${SELECTED_IFACE}
 ExecStop=/usr/bin/docker stop ntopng
 
 [Install]
