@@ -1,5 +1,7 @@
 package com.local.hackcheck
 
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -15,7 +17,9 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
@@ -46,6 +50,8 @@ fun RouterScreen(
     onCheckAppUsage: () -> Unit,
     onGrantUsageAccess: () -> Unit,
 ) {
+    val context = LocalContext.current
+
     LazyColumn(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
         item {
             Text("App data usage", fontWeight = FontWeight.Bold)
@@ -138,6 +144,47 @@ fun RouterScreen(
                 Row(modifier = Modifier.fillMaxWidth().padding(top = 24.dp)) {
                     CircularProgressIndicator()
                 }
+            }
+        }
+
+        item {
+            // Pi-hole's admin page lives on the same box but a different port
+            // (its own web server, not router-backend's FastAPI) -- Uri.host
+            // strips the scheme and port from baseUrl cleanly rather than
+            // string-splitting it by hand.
+            val host = remember(baseUrl) { Uri.parse(baseUrl).host ?: baseUrl }
+
+            Text(
+                "Quick links",
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(top = 24.dp, bottom = 4.dp),
+            )
+            OutlinedButton(
+                onClick = {
+                    val uri = Uri.parse("$baseUrl/static/dashboard.html")
+                    context.startActivity(Intent(Intent.ACTION_VIEW, uri))
+                },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("Open dashboard")
+            }
+            OutlinedButton(
+                onClick = {
+                    val uri = Uri.parse("$baseUrl/static/topology.html")
+                    context.startActivity(Intent(Intent.ACTION_VIEW, uri))
+                },
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+            ) {
+                Text("Open topology graph")
+            }
+            OutlinedButton(
+                onClick = {
+                    val uri = Uri.parse("http://$host/admin")
+                    context.startActivity(Intent(Intent.ACTION_VIEW, uri))
+                },
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+            ) {
+                Text("Open Pi-hole admin")
             }
         }
 
