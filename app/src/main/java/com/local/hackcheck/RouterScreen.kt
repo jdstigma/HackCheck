@@ -186,6 +186,15 @@ fun RouterScreen(
             ) {
                 Text("Open Pi-hole admin")
             }
+            OutlinedButton(
+                onClick = {
+                    val uri = Uri.parse("http://$host:3000")
+                    context.startActivity(Intent(Intent.ACTION_VIEW, uri))
+                },
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+            ) {
+                Text("Open ntopng")
+            }
         }
 
         if (topTalkers.isNotEmpty()) {
