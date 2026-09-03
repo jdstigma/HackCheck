@@ -52,36 +52,14 @@ private val DANGEROUS_PERMISSIONS = setOf(
     "android.permission.PACKAGE_USAGE_STATS",
 )
 
-// Best-effort, publicly documented package identifiers associated with consumer
-// stalkerware/spyware. NOT exhaustive -- absence of a match here does NOT mean
-// a device is clean. Add to this list as you research further; several known
-// stalkerware families deliberately rotate/obfuscate their package names.
-private val KNOWN_STALKERWARE_PACKAGES = setOf(
-    "com.flexispy.android",
-    "com.hoverwatch.rem",
-    "com.mobile.spy",
-    "com.mspyagent",
-    "com.google.services",          // documented alias used by TheTruthSpy-family apps
-    "com.system.update.service",    // generic disguise name seen in stalkerware reporting
-    "com.android.protect",
-    "com.transfer.wsb",
-)
-
-// Legitimate apps that CAN be used for covert monitoring of another person.
-// Not malware -- flagged separately so a genuine, disclosed use isn't confused
-// with the stalkerware list above.
-private val DUAL_USE_MONITORING_PACKAGES = setOf(
-    "com.familysafe.production",
-    "com.wondershare.famisafe",
-    "com.life360.android.safetymapd",
-    "com.google.android.apps.kids.familylink",
-    "com.eset.parentalcontrol",
-    "com.mmguardian.parentapp",
-)
-
 fun runScan(context: Context): ScanResult {
     val pm = context.packageManager
     val findings = mutableListOf<Finding>()
+    // See ThreatDefinitions.kt -- bundled fallback list unioned with whatever's
+    // been fetched from threat_definitions.json (real MVT-sourced indicators,
+    // refreshed on every app launch, never hand-curated).
+    val stalkerwarePackages = ThreatDefinitions.stalkerwarePackages(context)
+    val dualUsePackages = ThreatDefinitions.dualUsePackages(context)
 
     @Suppress("DEPRECATION")
     val packages: List<PackageInfo> = try {
@@ -99,16 +77,18 @@ fun runScan(context: Context): ScanResult {
         val grantedDangerous = grantedDangerousPermissions(pkg)
         val hasLauncherIcon = pm.getLaunchIntentForPackage(pkgName) != null
 
-        if (KNOWN_STALKERWARE_PACKAGES.contains(pkgName)) {
+        val stalkerwareFamily = stalkerwarePackages[pkgName]
+        if (stalkerwareFamily != null) {
             findings += Finding(
                 RiskLevel.HIGH,
                 "Known-stalkerware package match: $label",
-                "$pkgName matches a publicly documented spyware package name. " +
-                    "This list is not exhaustive -- treat a non-match as inconclusive, not clean.",
+                "$pkgName matches a publicly documented spyware package name " +
+                    "(family: $stalkerwareFamily). This list is not exhaustive -- " +
+                    "treat a non-match as inconclusive, not clean.",
             )
         }
 
-        if (DUAL_USE_MONITORING_PACKAGES.contains(pkgName)) {
+        if (dualUsePackages.contains(pkgName)) {
             findings += Finding(
                 RiskLevel.MEDIUM,
                 "Monitoring-capable app installed: $label",
@@ -190,6 +170,8 @@ fun runScan(context: Context): ScanResult {
 fun rawInventory(context: Context): List<AppRow> {
     val pm = context.packageManager
     val powerManager = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
+    val stalkerwarePackages = ThreatDefinitions.stalkerwarePackages(context)
+    val dualUsePackages = ThreatDefinitions.dualUsePackages(context)
 
     @Suppress("DEPRECATION")
     val packages: List<PackageInfo> = try {
@@ -216,8 +198,8 @@ fun rawInventory(context: Context): List<AppRow> {
             lastUpdateTimeMillis = pkg.lastUpdateTime,
             grantedDangerousPermissions = grantedDangerousPermissions(pkg),
             ignoringBatteryOptimizations = ignoringOptimizations,
-            knownStalkerwareMatch = KNOWN_STALKERWARE_PACKAGES.contains(pkgName),
-            dualUseMonitoringMatch = DUAL_USE_MONITORING_PACKAGES.contains(pkgName),
+            knownStalkerwareMatch = stalkerwarePackages.containsKey(pkgName),
+            dualUseMonitoringMatch = dualUsePackages.contains(pkgName),
         )
     }
 }

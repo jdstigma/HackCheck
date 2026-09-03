@@ -97,6 +97,14 @@ fun HackCheckApp() {
     }
     val openCellIdApiKey = BuildConfig.OPENCELLID_API_KEY
 
+    // Refresh the stalkerware/dual-use definitions cache once per app open
+    // (see ThreatDefinitions.kt) -- fire-and-forget, never blocks anything;
+    // a scan run before this completes just uses whatever was already
+    // cached from a previous launch, or the bundled fallback list.
+    LaunchedEffect(Unit) {
+        ThreatDefinitions.refresh(context)
+    }
+
     // Router backend state
     var routerBaseUrl by remember { mutableStateOf(RouterPrefs.getBaseUrl(context)) }
     var routerConnectionStatus by remember { mutableStateOf<String?>(null) }
