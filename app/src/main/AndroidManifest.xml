@@ -42,12 +42,18 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
 
+    <!-- usesCleartextTraffic: the Router screen and its Quick Links talk to
+         router-backend/ntopng/Pi-hole over plain HTTP on the local network,
+         none of them have TLS certs, and Android blocks all cleartext traffic
+         by default on this SDK level, which was silently breaking "Test
+         connection" and every other backend call from the app. -->
     <application
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
+        android:usesCleartextTraffic="true"
         android:theme="@style/Theme.HackCheck">
         <activity
             android:name=".MainActivity"
