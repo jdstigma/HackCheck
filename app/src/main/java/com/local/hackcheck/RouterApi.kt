@@ -1,5 +1,6 @@
 package com.local.hackcheck
 
+import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -75,22 +76,53 @@ data class TopDnsDomain(
  */
 object RouterApi {
 
+    private const val TAG = "RouterApi"
     private const val TIMEOUT_MS = 6000
     private const val POST_TIMEOUT_MS = 15000  // systemctl start/stop can take a few seconds
 
-    private suspend fun getJson(url: String): Any? = withContext(Dispatchers.IO) {
+    /**
+     * Every function in this object builds its URL from a caller-supplied
+     * baseUrl and hands it to java.net.URL, which throws MalformedURLException
+     * outright if there's no http(s):// scheme -- easy for a user to end up
+     * with a scheme-less baseUrl (e.g. editing the Backend URL field down to
+     * just "192.168.0.16:8000" while troubleshooting), and every call site
+     * here needs the same protection, not just the Quick Links buttons in
+     * RouterScreen.kt (which normalize their own separately-constructed
+     * URLs -- this is that same fix, applied at this object's one real
+     * choke point instead of duplicated per call site).
+     */
+    private fun normalizeBaseUrl(raw: String): String {
+        val trimmed = raw.trim().trimEnd('/')
+        return if (trimmed.startsWith("http://", ignoreCase = true) ||
+            trimmed.startsWith("https://", ignoreCase = true)
+        ) {
+            trimmed
+        } else {
+            "http://$trimmed"
+        }
+    }
+
+    private suspend fun getJson(baseUrlAndPath: String): Any? = withContext(Dispatchers.IO) {
         var conn: HttpURLConnection? = null
+        val url = normalizeBaseUrl(baseUrlAndPath)
         try {
             conn = (URL(url).openConnection() as HttpURLConnection).apply {
                 connectTimeout = TIMEOUT_MS
                 readTimeout = TIMEOUT_MS
                 requestMethod = "GET"
             }
-            if (conn.responseCode != HttpURLConnection.HTTP_OK) return@withContext null
+            if (conn.responseCode != HttpURLConnection.HTTP_OK) {
+                Log.w(TAG, "GET $url -> HTTP ${conn.responseCode}")
+                return@withContext null
+            }
             val body = conn.inputStream.bufferedReader().readText()
             val trimmed = body.trim()
             if (trimmed.startsWith("[")) JSONArray(trimmed) else JSONObject(trimmed)
         } catch (e: Exception) {
+            // Deliberately returns null rather than throwing (see the class doc),
+            // but that made every failure invisible -- log it so a real cause
+            // (bad host, cleartext block, timeout, etc.) can actually be seen.
+            Log.e(TAG, "GET $url failed", e)
             null
         } finally {
             conn?.disconnect()
@@ -100,8 +132,9 @@ object RouterApi {
     /** POST with no body, used for the ntopng box start/stop controls.
      *  Longer timeout than GET requests -- systemctl start/stop can take
      *  a few seconds on a Pi, not just a normal API round-trip. */
-    private suspend fun postJson(url: String): JSONObject? = withContext(Dispatchers.IO) {
+    private suspend fun postJson(baseUrlAndPath: String): JSONObject? = withContext(Dispatchers.IO) {
         var conn: HttpURLConnection? = null
+        val url = normalizeBaseUrl(baseUrlAndPath)
         try {
             conn = (URL(url).openConnection() as HttpURLConnection).apply {
                 connectTimeout = TIMEOUT_MS
@@ -109,10 +142,14 @@ object RouterApi {
                 requestMethod = "POST"
                 doOutput = false
             }
-            if (conn.responseCode != HttpURLConnection.HTTP_OK) return@withContext null
+            if (conn.responseCode != HttpURLConnection.HTTP_OK) {
+                Log.w(TAG, "POST $url -> HTTP ${conn.responseCode}")
+                return@withContext null
+            }
             val body = conn.inputStream.bufferedReader().readText()
             JSONObject(body.trim())
         } catch (e: Exception) {
+            Log.e(TAG, "POST $url failed", e)
             null
         } finally {
             conn?.disconnect()
