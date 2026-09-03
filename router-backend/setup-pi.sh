@@ -406,6 +406,31 @@ if confirm "Install Suricata now?"; then
         echo "/etc/suricata/suricata.yaml under af-packet: interface: before starting it."
     fi
 
+    # Plain `apt install suricata` on Debian/Raspberry Pi OS ships with
+    # little to no real detection ruleset -- suricata-update is what
+    # actually pulls in a real ruleset (Emerging Threats Open by default,
+    # free, no signup). Without this, Suricata runs but has nothing
+    # meaningful to alert on.
+    if command -v suricata-update >/dev/null 2>&1; then
+        echo "suricata-update already installed."
+    else
+        sudo apt install -y suricata-update
+    fi
+    echo "Downloading current detection rules (this can take a minute)..."
+    sudo suricata-update
+
+    # Re-run suricata-update every time the service starts, not just this
+    # one-time install, so rules stay current on every reboot/restart
+    # without a separate cron job to maintain. A systemd drop-in override
+    # rather than editing the package's own unit file directly, so a
+    # future `apt upgrade suricata` won't silently clobber this.
+    sudo mkdir -p /etc/systemd/system/suricata.service.d
+    sudo tee /etc/systemd/system/suricata.service.d/override.conf > /dev/null << 'OVERRIDE_EOF'
+[Service]
+ExecStartPre=/usr/bin/suricata-update
+OVERRIDE_EOF
+    sudo systemctl daemon-reload
+
     sudo systemctl enable suricata
     sudo systemctl restart suricata
     echo "Suricata service status:"

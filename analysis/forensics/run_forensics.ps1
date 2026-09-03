@@ -30,7 +30,19 @@ if ((Get-Command adb -ErrorAction SilentlyContinue) -eq $null -and (Test-Path "$
 
 New-Item -ItemType Directory -Path $AcquisitionDir -Force | Out-Null
 
-Write-Host "=== Step 1/2: Acquisition (AndroidQF) ===" -ForegroundColor Cyan
+Write-Host "=== Step 1/3: Refreshing threat indicators (MVT IOCs) ===" -ForegroundColor Cyan
+# Re-downloads the real Amnesty-maintained IOC set (Pegasus, Predator,
+# Candiru, NoviSpy, the dedicated Stalkerware indicators feed, etc.) every
+# run, rather than relying on whatever was current the last time setup.ps1
+# happened to be run -- these indicators are actively updated as new
+# spyware is identified, so a stale local copy misses real detections.
+& $MvtExe download-iocs
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "IOC refresh failed -- continuing with whatever indicators are already cached locally." -ForegroundColor Yellow
+}
+
+Write-Host ""
+Write-Host "=== Step 2/3: Acquisition (AndroidQF) ===" -ForegroundColor Cyan
 Write-Host "Output: $AcquisitionDir"
 & $AndroidQF -output $AcquisitionDir -fast
 if ($LASTEXITCODE -ne 0) { throw "androidqf acquisition failed (exit $LASTEXITCODE)" }
@@ -42,7 +54,7 @@ if ($LASTEXITCODE -ne 0) { throw "androidqf acquisition failed (exit $LASTEXITCO
 Write-Host "Acquisition data: $AcquisitionDir" -ForegroundColor Green
 
 Write-Host ""
-Write-Host "=== Step 2/2: Analysis (MVT) ===" -ForegroundColor Cyan
+Write-Host "=== Step 3/3: Analysis (MVT) ===" -ForegroundColor Cyan
 New-Item -ItemType Directory -Path $MvtResultsDir -Force | Out-Null
 & $MvtExe check-androidqf $AcquisitionDir -o $MvtResultsDir
 Write-Host ""
