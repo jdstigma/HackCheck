@@ -1,7 +1,10 @@
 package com.local.hackcheck
 
+import android.content.ActivityNotFoundException
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.widget.Toast
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -22,6 +25,35 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+
+/**
+ * Ensures a URL has an http(s):// scheme before it's ever handed to Uri.parse().
+ * Without one, a bare host like "192.168.0.16" parses as an *opaque* URI whose
+ * scheme is literally "192.168.0.16" -- no app can handle that, and it crashed
+ * the app outright the first time a Quick Links button was tapped with a
+ * scheme-less Backend URL (a user could easily end up with one, e.g. editing
+ * out "http://" while troubleshooting).
+ */
+private fun normalizeUrl(raw: String): String {
+    val trimmed = raw.trim().trimEnd('/')
+    return if (trimmed.startsWith("http://", ignoreCase = true) ||
+        trimmed.startsWith("https://", ignoreCase = true)
+    ) {
+        trimmed
+    } else {
+        "http://$trimmed"
+    }
+}
+
+/** Opens a URL in the device's browser, catching the case where nothing can
+ *  handle it (e.g. a still-malformed URL) rather than crashing the app. */
+private fun openUrl(context: Context, url: String) {
+    try {
+        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+    } catch (e: ActivityNotFoundException) {
+        Toast.makeText(context, "Couldn't open $url", Toast.LENGTH_SHORT).show()
+    }
+}
 
 // Everything in this screen lives in one LazyColumn (static sections as
 // item{} blocks, lists as items()) rather than a plain Column wrapping a
@@ -148,11 +180,16 @@ fun RouterScreen(
         }
 
         item {
-            // Pi-hole's admin page lives on the same box but a different port
-            // (its own web server, not router-backend's FastAPI) -- Uri.host
-            // strips the scheme and port from baseUrl cleanly rather than
-            // string-splitting it by hand.
-            val host = remember(baseUrl) { Uri.parse(baseUrl).host ?: baseUrl }
+            // Backend URL is free-text and easy to end up scheme-less (e.g. a
+            // user editing out "http://" while troubleshooting) -- normalize
+            // before it's ever used to build a Uri, see normalizeUrl()'s doc.
+            val normalizedBaseUrl = remember(baseUrl) { normalizeUrl(baseUrl) }
+            // Pi-hole/ntopng live on the same box but different ports than
+            // router-backend's FastAPI -- Uri.host strips scheme+port cleanly
+            // rather than string-splitting normalizedBaseUrl by hand.
+            val host = remember(normalizedBaseUrl) {
+                Uri.parse(normalizedBaseUrl).host ?: normalizedBaseUrl
+            }
 
             Text(
                 "Quick links",
@@ -160,37 +197,25 @@ fun RouterScreen(
                 modifier = Modifier.padding(top = 24.dp, bottom = 4.dp),
             )
             OutlinedButton(
-                onClick = {
-                    val uri = Uri.parse("$baseUrl/static/dashboard.html")
-                    context.startActivity(Intent(Intent.ACTION_VIEW, uri))
-                },
+                onClick = { openUrl(context, "$normalizedBaseUrl/static/dashboard.html") },
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Text("Open dashboard")
             }
             OutlinedButton(
-                onClick = {
-                    val uri = Uri.parse("$baseUrl/static/topology.html")
-                    context.startActivity(Intent(Intent.ACTION_VIEW, uri))
-                },
+                onClick = { openUrl(context, "$normalizedBaseUrl/static/topology.html") },
                 modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
             ) {
                 Text("Open topology graph")
             }
             OutlinedButton(
-                onClick = {
-                    val uri = Uri.parse("http://$host/admin")
-                    context.startActivity(Intent(Intent.ACTION_VIEW, uri))
-                },
+                onClick = { openUrl(context, "http://$host/admin") },
                 modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
             ) {
                 Text("Open Pi-hole admin")
             }
             OutlinedButton(
-                onClick = {
-                    val uri = Uri.parse("http://$host:3000")
-                    context.startActivity(Intent(Intent.ACTION_VIEW, uri))
-                },
+                onClick = { openUrl(context, "http://$host:3000") },
                 modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
             ) {
                 Text("Open ntopng")
