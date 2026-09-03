@@ -37,3 +37,5 @@ __pycache__/
 # Router backend: real DB credentials and API keys live in .env, never committed.
 /router-backend/.env
 /router-backend/.venv/
+*.keystore
+*.jks

@@ -36,10 +36,28 @@ android {
         )
     }
 
+    signingConfigs {
+        // Only configured when local.properties actually has signing.* set
+        // (gitignored -- see local.properties.example-style comment there)
+        // so a fresh checkout without a keystore still builds debug fine.
+        val hasSigningConfig = localProperties.getProperty("signing.storeFile") != null
+        if (hasSigningConfig) {
+            create("release") {
+                storeFile = rootProject.file(localProperties.getProperty("signing.storeFile"))
+                storePassword = localProperties.getProperty("signing.storePassword")
+                keyAlias = localProperties.getProperty("signing.keyAlias")
+                keyPassword = localProperties.getProperty("signing.keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
             optimization {
                 enable = false
+            }
+            if (signingConfigs.names.contains("release")) {
+                signingConfig = signingConfigs.getByName("release")
             }
         }
     }
